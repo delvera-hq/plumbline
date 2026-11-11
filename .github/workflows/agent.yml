@@ -91,8 +91,17 @@ jobs:
         run: |
           set -euo pipefail
           cp .github/agent/run-agent.sh "$RUNNER_TEMP/run-agent.sh"
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq bubblewrap socat
+          # Ubuntu's archive first, with short timeouts. If it can't be reached, the pinned copies in .github/agent/debs.
+          APT=(-o Acquire::Retries=1 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15)
+          if ! { sudo timeout 90 apt-get update -qq "${APT[@]}" && sudo timeout 90 apt-get install -y -qq "${APT[@]}" bubblewrap socat; }; then
+            echo "::warning::Ubuntu's archive is unreachable, so installing the pinned copies in .github/agent/debs"
+            (cd .github/agent/debs && sha256sum --check --strict SHA256SUMS)
+            DEBS=(.github/agent/debs/bubblewrap_*.deb .github/agent/debs/socat_*.deb)
+            dpkg -s libwrap0 > /dev/null 2>&1 || DEBS+=(.github/agent/debs/libwrap0_*.deb)
+            sudo dpkg -i "${DEBS[@]}"
+          fi
+          bwrap --version
+          socat -V | sed -n 2p
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           npm install --global "pnpm@$(jq -r '.packageManager | split("@")[1]' package.json)" "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
           pnpm install --frozen-lockfile --ignore-scripts --store-dir "$RUNNER_TEMP/pnpm-store"

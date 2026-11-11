@@ -1,5 +1,5 @@
 # Changes here are overwritten by `copier update`. Don't edit by hand.
-_commit: v0.1.1
+_commit: v0.1.2
 _src_path: https://github.com/delvera-hq/org-templates.git
 cost_center: cc-products
 flavor: web
