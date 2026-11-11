@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "event": "deployed",
+  "tenant": "internal",
+  "project": "plumbline",
+  "sha": "b4aa098b1159b470f7c48c38670baa848fcc11b1",
+  "result": "ok",
+  "cf_version_id": "01a5556a-8cee-44a4-9c3f-1e33e6500c0a",
+  "at": "2026-11-11T19:48:14Z"
+}
