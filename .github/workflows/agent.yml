@@ -167,10 +167,11 @@ jobs:
           tar --no-same-owner -xf "$RUNNER_TEMP/in/agent-tree.tar" -C "$RUNNER_TEMP/tree"
           # Not -a or -t: a preserved timestamp can make git treat a same-size edit as unchanged.
           rsync -rlp --checksum --delete --exclude=/.git "$RUNNER_TEMP/tree/" ./
-          # The Linux sandbox may mount over paths such as .mcp.json, which can leave empty files behind.
-          # Git is safe here, as this is a fresh clone. New, empty, top-level dotfiles aren't the agent's work.
+          # The Linux sandbox mounts over paths it blocks, which leaves empty files behind: dotfiles such as .npmrc,
+          # and also bunfig.toml, package-lock.json and yarn.lock. Git is safe here, as this is a fresh clone.
+          # New, empty, top-level files aren't the agent's work. An emptied tracked file still shows in the patch.
           git ls-files --others --exclude-standard -z | while IFS= read -r -d '' f; do
-            if [[ "$f" == .* && "$f" != */* && ! -s "$f" ]]; then echo "Dropping empty $f"; rm -f -- "$f"; fi
+            if [[ "$f" != */* && -f "$f" && ! -s "$f" ]]; then echo "Dropping empty $f"; rm -f -- "$f"; fi
           done
           git add -A
           git diff --cached --binary --no-renames > agent.patch
