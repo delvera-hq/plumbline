@@ -68,8 +68,11 @@ export function parseUtc(value: string | null): number | null {
   const y = Number(year);
   const m = Number(month) - 1;
   const d = Number(day);
-  // Date.UTC rolls over impossible dates such as 2026-02-31; reject them instead.
+  // Date.UTC rolls over out-of-range fields such as month 13 or 2026-02-31; reject them instead.
+  if (m < 0 || m > 11) return null;
   if (new Date(Date.UTC(y, m, d)).getUTCDate() !== d) return null;
+  if (Number(hour) > 23 || Number(minute) > 59 || Number(second) > 59) return null;
+  if (Number(offHour) > 23 || Number(offMinute) > 59) return null;
   const local = Date.UTC(y, m, d, Number(hour), Number(minute), Number(second));
   const offset = sign ? (sign === "+" ? 1 : -1) * (Number(offHour) * 60 + Number(offMinute)) * 60_000 : 0;
   return local - offset;
@@ -143,6 +146,8 @@ export function findDrift(items: PlanItem[], issues: WorkIssue[], options: Drift
           evidence: [
             itemFact("dueDate", item.dueDate),
             ...openWithDates.flatMap(({ issue }) => [{ id: issue.key, field: "updatedAt", value: issue.updatedAt }]),
+            itemFact("now", options.now.toISOString()),
+            itemFact("staleCutoff", new Date(staleBefore).toISOString()),
           ],
         });
       }
