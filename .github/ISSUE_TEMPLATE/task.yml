@@ -1,0 +1,16 @@
+name: Task for the agent
+description: One small change. Add the agent:go label to start it.
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What and why
+    validations:
+      required: true
+  - type: textarea
+    id: criteria
+    attributes:
+      label: Acceptance criteria
+      description: How you would know it worked. The agent needs this to start.
+    validations:
+      required: true

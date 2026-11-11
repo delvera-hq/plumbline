@@ -1,0 +1,126 @@
+# Path 1. A merge to main goes live. The build runs repo code and holds no secrets. The deploy job holds the token
+# and runs only a pinned wrangler on the build's output.
+name: deploy
+on:
+  push:
+    branches: [main]
+permissions: {}
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "24"
+      - run: npm install --global "pnpm@$(jq -r '.packageManager | split("@")[1]' package.json)"
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm exec biome check .
+      - run: pnpm exec tsc --noEmit
+      - run: pnpm exec vitest run
+      - name: Build the site from public only, so compiled source in this private repo doesn't go public
+        run: mkdir dist && cp -r public/. dist/
+      - name: Stamp the build, so the deploy can prove which version is live
+        run: jq -n --arg version "$GITHUB_SHA" '{version:$version}' > dist/__version.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 14
+
+  deploy:
+    needs: build
+    if: vars.DEPLOY_FREEZE != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: production # Holds only the Cloudflare token, and is limited to main.
+    permissions: {}
+    outputs:
+      version_id: ${{ steps.upload.outputs.version_id }}
+    steps:
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "24"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dist
+          path: dist
+      - name: Install wrangler, with no token in reach of its install scripts
+        env:
+          WRANGLER: ${{ vars.WRANGLER_VERSION }}
+        run: npm install --no-audit --no-fund --prefix "$RUNNER_TEMP/tool" "wrangler@$WRANGLER"
+      - name: Write the config here, as the repo's copy can carry a build command that would run beside the token
+        env:
+          WORKER: ${{ vars.WORKER_NAME }}
+        run: |
+          jq -n --arg name "$WORKER" '{name:$name,compatibility_date:"2026-10-01",assets:{directory:"./dist",not_found_handling:"404-page"},preview_urls:true,workers_dev:true}' > wrangler.json
+      - id: upload
+        name: Upload the version
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_DEPLOY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          OUT=$("$RUNNER_TEMP/tool/node_modules/.bin/wrangler" versions upload --config wrangler.json --message "$GITHUB_SHA")
+          echo "$OUT"
+          ID=$(grep -oE 'Worker Version ID: [0-9a-f-]+' <<<"$OUT" | awk '{print $NF}') || ID=""
+          if [ -z "$ID" ]; then echo "::error::No version ID in wrangler's output"; exit 1; fi
+          echo "version_id=$ID" >> "$GITHUB_OUTPUT"
+      - name: Send all traffic to it
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_DEPLOY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          VERSION_ID: ${{ steps.upload.outputs.version_id }}
+        run: '"$RUNNER_TEMP/tool/node_modules/.bin/wrangler" versions deploy "$VERSION_ID@100%" --config wrangler.json --yes --message "$GITHUB_SHA"'
+      - name: Check that this commit is what's live
+        env:
+          URL: ${{ vars.PRODUCTION_URL }}
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5 6; do
+            LIVE=$(curl -fsS --max-time 10 "$URL/__version.json" | jq -r .version) || LIVE=unreachable
+            if [ "$LIVE" = "$GITHUB_SHA" ]; then echo "Live: $LIVE"; exit 0; fi
+            echo "Attempt $attempt: live is $LIVE"
+            sleep 10
+          done
+          echo "::error::$GITHUB_SHA isn't live"
+          exit 1
+
+  record:
+    needs: [build, deploy]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: write # Only for the run-log branch. Its pushes trigger no workflow, as they use GITHUB_TOKEN.
+    steps:
+      - name: Write the deploy event
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BUILD: ${{ needs.build.result }}
+          DEPLOY: ${{ needs.deploy.result }}
+          VERSION_ID: ${{ needs.deploy.outputs.version_id }}
+          TENANT: ${{ vars.TENANT || 'internal' }}
+          PROJECT: ${{ vars.PROJECT || github.event.repository.name }}
+        run: |
+          set -uo pipefail
+          RESULT=failed
+          if [ "$DEPLOY" = "success" ]; then RESULT=ok; fi
+          if [ "$BUILD" = "success" ] && [ "$DEPLOY" = "skipped" ]; then RESULT=skipped; fi
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          jq -n --arg e deployed --arg t "$TENANT" --arg p "$PROJECT" --arg sha "$GITHUB_SHA" --arg r "$RESULT" \
+            --arg v "$VERSION_ID" --arg at "$NOW" \
+            '{schema_version:1,event:$e,tenant:$t,project:$p,sha:$sha,result:$r,cf_version_id:$v,at:$at}' > event.json
+          gh api -X PUT "repos/$GH_REPO/contents/events/${NOW%%T*}/$GITHUB_SHA-$GITHUB_RUN_ATTEMPT-deployed.json" \
+            -f branch=run-log -f message="log: $GITHUB_SHA deployed" -f content="$(base64 -w0 event.json)" > /dev/null \
+            || echo "::warning::Couldn't write the run log"

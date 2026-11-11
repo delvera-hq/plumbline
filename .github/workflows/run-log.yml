@@ -1,0 +1,70 @@
+# Path 1. Records PRs closing, and posts a weekly summary issue. Neither job runs code from a PR.
+name: run-log
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+permissions: {}
+
+jobs:
+  pr-closed:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: write # Only for the run-log branch. Its pushes trigger no workflow, as they use GITHUB_TOKEN.
+    steps:
+      - name: Write the event
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          MERGED: ${{ github.event.pull_request.merged }}
+          SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          MERGED_BY: ${{ github.event.pull_request.merged_by.login }}
+          BODY: ${{ github.event.pull_request.body }}
+          TENANT: ${{ vars.TENANT || 'internal' }}
+          PROJECT: ${{ vars.PROJECT || github.event.repository.name }}
+        run: |
+          set -uo pipefail
+          # A person's PR has no run_id, and that's fine. The default shell also has -e on.
+          RUN_ID=$(grep -oE '^run_id: run_[0-9]+_[0-9]+' <<<"$BODY" | head -1 | cut -d' ' -f2) || RUN_ID=""
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          jq -n --arg e pr_closed --arg run "$RUN_ID" --arg t "$TENANT" --arg p "$PROJECT" --arg pr "$PR" \
+            --argjson merged "$MERGED" --arg by "$MERGED_BY" --arg sha "$SHA" --arg at "$NOW" \
+            '{schema_version:1,event:$e,run_id:$run,tenant:$t,project:$p,pr:$pr,merged:$merged,merged_by:$by,sha:$sha,at:$at}' > event.json
+          gh api -X PUT "repos/$GH_REPO/contents/events/${NOW%%T*}/pr-$PR-closed-$GITHUB_RUN_ID.json" \
+            -f branch=run-log -f message="log: PR $PR closed" -f content="$(base64 -w0 event.json)" > /dev/null \
+            || echo "::warning::Couldn't write the run log"
+
+  summary:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/agent/
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: run-log
+          path: log
+          persist-credentials: false
+      - name: Post the summary
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 -I .github/agent/run_log_summary.py --events log/events --repo "$GH_REPO" > summary.md
+          gh issue create --title "Weekly run summary, $(date -u +%Y-%m-%d)" --body-file summary.md

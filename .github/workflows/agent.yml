@@ -1,0 +1,283 @@
+# Path 1. Issue to PR with no broker. The agent gets a read-only checkout and an LLM key, and outputs a patch.
+# Separate jobs turn the patch into a PR and record the result. See bootstrap/path-1/README.md.
+name: agent
+on:
+  issues:
+    types: [labeled]
+permissions: {}
+concurrency:
+  group: agent-${{ github.event.issue.number }}-${{ github.event.label.name }} # Any other label would replace a pending run.
+  cancel-in-progress: false
+
+jobs:
+  authorize:
+    if: github.event.label.name == 'agent:go'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      issues: read
+    outputs:
+      run_id: ${{ steps.spec.outputs.run_id }}
+      title: ${{ steps.spec.outputs.title }}
+      started_at: ${{ steps.spec.outputs.started_at }}
+    steps:
+      - name: Check who asked, and build the spec as a data file, never as a prompt or a shell string
+        id: spec
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+          SENDER: ${{ github.event.sender.login }}
+          ALLOW: ${{ vars.AGENT_TRIGGER_ALLOWLIST }}
+          RUN: ${{ github.run_id }}
+          ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          jq -en --argjson allow "$ALLOW" --arg s "$SENDER" '$allow | index($s) != null' > /dev/null
+          gh api "repos/$REPO/issues/$ISSUE" > issue.json
+          # By login, not author_association: private org members can show as CONTRIBUTOR or NONE.
+          jq -e --argjson allow "$ALLOW" '.user.login as $u | $allow | index($u) != null' issue.json > /dev/null
+          jq -r '.body // ""' issue.json | grep -qiE '^#+ *Acceptance criteria'
+          mkdir -p spec
+          jq -r '"# Issue title\n\(.title)\n\n# Issue body\n\(.body)"' issue.json > spec/spec.md
+          TITLE=$(jq -r .title issue.json | LC_ALL=C tr -cd '[:print:]' | cut -c1-70)
+          [ -n "${TITLE// /}" ] || TITLE="Issue #$ISSUE" # A title in another script strips to nothing.
+          {
+            echo "run_id=run_${RUN}_${ATTEMPT}"
+            echo "title=$TITLE"
+            echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: spec
+          path: spec/
+          retention-days: 3
+
+  code:
+    needs: authorize
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: agent-llm # Holds only the LLM key, and is limited to main. This job has no write permission.
+    permissions:
+      contents: read
+    outputs:
+      base_sha: ${{ steps.base.outputs.sha }}
+      result: ${{ steps.agent.outputs.result }}
+      cost_usd_est: ${{ steps.agent.outputs.cost_usd_est }}
+      escalated: ${{ steps.ask.outputs.escalated }}
+      reason: ${{ steps.ask.outputs.reason }}
+      summary: ${{ steps.ask.outputs.summary }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.event.repository.default_branch }}
+      - name: Record the commit the agent starts from
+        id: base
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "24"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: spec
+          path: .agent
+      - name: Install tools and dependencies, prepare the sandbox, then remove sudo
+        env:
+          CLAUDE_CODE_VERSION: ${{ vars.CLAUDE_CODE_VERSION }}
+        run: |
+          set -euo pipefail
+          cp .github/agent/run-agent.sh "$RUNNER_TEMP/run-agent.sh"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap socat
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          npm install --global "pnpm@$(jq -r '.packageManager | split("@")[1]' package.json)" "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+          pnpm install --frozen-lockfile --ignore-scripts --store-dir "$RUNNER_TEMP/pnpm-store"
+          sudo chmod 600 /var/run/docker.sock
+          sudo rm -f /etc/sudoers.d/runner
+          if sudo -n true 2>/dev/null; then echo "::error::sudo still works, so the sandbox can't be trusted"; exit 1; fi
+      - name: Run the coding agent
+        id: agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MODEL: ${{ vars.AGENT_MODEL || 'claude-sonnet-5-5' }}
+          BUDGET: ${{ vars.AGENT_RUN_BUDGET_USD || '1.00' }}
+        run: bash "$RUNNER_TEMP/run-agent.sh"
+      - name: Did the agent ask to stop?
+        id: ask
+        if: always() && steps.agent.conclusion == 'success'
+        run: |
+          # A symlink could point at a secret, so only a plain file counts.
+          if [ -f .agent/escalate.json ] && [ ! -L .agent/escalate.json ]; then
+            REASON=$(jq -r '.reason_code // "UNKNOWN"' .agent/escalate.json | LC_ALL=C tr -cd 'A-Z_' | cut -c1-40)
+            SUMMARY=$(jq -r '.summary // ""' .agent/escalate.json | LC_ALL=C tr -cd '[:print:]' | tr -d '@' | cut -c1-200)
+            { echo "escalated=true"; echo "reason=$REASON"; echo "summary=$SUMMARY"; } >> "$GITHUB_OUTPUT"
+          else
+            echo "escalated=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Package the working tree, and never run git on what the agent left
+        if: always() && steps.agent.conclusion == 'success'
+        run: |
+          set -euo pipefail
+          rm -rf .agent
+          tar --exclude=./.git --exclude=./node_modules --exclude=./dist -cf "$RUNNER_TEMP/agent-tree.tar" .
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always() && steps.agent.conclusion == 'success'
+        with:
+          name: agent-tree
+          path: ${{ runner.temp }}/agent-tree.tar
+          retention-days: 3
+      - name: Remove .git, so checkout's cleanup can't trigger hooks the agent planted
+        if: always()
+        run: rm -rf "$GITHUB_WORKSPACE/.git"
+
+  export: # Builds the patch in a fresh clone. No LLM key, and none of the agent's git config.
+    needs: code
+    if: needs.code.result == 'success' && needs.code.outputs.escalated != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ needs.code.outputs.base_sha }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: agent-tree
+          path: ${{ runner.temp }}/in
+      - name: Export patch
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/tree"
+          tar --no-same-owner -xf "$RUNNER_TEMP/in/agent-tree.tar" -C "$RUNNER_TEMP/tree"
+          # Not -a or -t: a preserved timestamp can make git treat a same-size edit as unchanged.
+          rsync -rlp --checksum --delete --exclude=/.git "$RUNNER_TEMP/tree/" ./
+          # The Linux sandbox may mount over paths such as .mcp.json, which can leave empty files behind.
+          # Git is safe here, as this is a fresh clone. New, empty, top-level dotfiles aren't the agent's work.
+          git ls-files --others --exclude-standard -z | while IFS= read -r -d '' f; do
+            if [[ "$f" == .* && "$f" != */* && ! -s "$f" ]]; then echo "Dropping empty $f"; rm -f -- "$f"; fi
+          done
+          git add -A
+          git diff --cached --binary --no-renames > agent.patch
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: agent-output
+          path: agent.patch
+          if-no-files-found: error
+          retention-days: 7
+
+  publish: # Deterministic. No LLM. The only job that gets a write token.
+    needs: [authorize, code, export]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: agent-publish # Holds only the App key, and is limited to main.
+    permissions:
+      contents: read
+    outputs:
+      published: ${{ steps.apply.outputs.published }}
+      reason: ${{ steps.apply.outputs.reason }}
+      pr_url: ${{ steps.apply.outputs.pr_url }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          token: ${{ steps.app.outputs.token }}
+          fetch-depth: 0
+          ref: ${{ needs.code.outputs.base_sha }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: agent-output
+          path: ${{ runner.temp }}/out
+      - name: Copy the tools, then apply, check, push and open the PR
+        id: apply
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PATCH: ${{ runner.temp }}/out/agent.patch
+          TOOLS: ${{ runner.temp }}/tools
+          ISSUE: ${{ github.event.issue.number }}
+          RUN_ID: ${{ needs.authorize.outputs.run_id }}
+          PR_TITLE: ${{ needs.authorize.outputs.title }}
+          AGENT_RESULT: ${{ needs.code.outputs.result }}
+          BASE_SHA: ${{ needs.code.outputs.base_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$TOOLS"
+          cp .github/agent/publish.sh .github/agent/path_gate.py "$TOOLS/"
+          bash "$TOOLS/publish.sh"
+
+  record: # Always runs. Tells the issue what happened and writes the run log. Runs nothing from the repo.
+    needs: [authorize, code, export, publish]
+    if: always() && github.event.label.name == 'agent:go'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: write # Only for the run-log branch. Its pushes trigger no workflow, as they use GITHUB_TOKEN.
+      issues: write
+    steps:
+      - name: Work out the outcome, comment on the issue, and write the event
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          AUTH: ${{ needs.authorize.result }}
+          CODE: ${{ needs.code.result }}
+          AGENT: ${{ needs.code.outputs.result }}
+          ESCALATED: ${{ needs.code.outputs.escalated }}
+          REASON: ${{ needs.code.outputs.reason }}
+          SUMMARY: ${{ needs.code.outputs.summary }}
+          PUBLISHED: ${{ needs.publish.outputs.published }}
+          PUBLISH_REASON: ${{ needs.publish.outputs.reason }}
+          PR_URL: ${{ needs.publish.outputs.pr_url }}
+          RUN_ID: ${{ needs.authorize.outputs.run_id }}
+          STARTED: ${{ needs.authorize.outputs.started_at }}
+          COST: ${{ needs.code.outputs.cost_usd_est }}
+          BASE_SHA: ${{ needs.code.outputs.base_sha }}
+          TENANT: ${{ vars.TENANT || 'internal' }}
+          PROJECT: ${{ vars.PROJECT || github.event.repository.name }}
+        run: |
+          set -uo pipefail
+          if [ "$AUTH" != "success" ]; then
+            RESULT=refused
+            TEXT="I didn't start. Either the person or the issue isn't allowed, or the issue has no \"Acceptance criteria\" heading."
+          elif [ "$ESCALATED" = "true" ]; then
+            RESULT=escalated
+            TEXT="The agent stopped and is asking for help. Reason: $REASON. $SUMMARY"
+          elif [ "$CODE" != "success" ]; then
+            RESULT=job_failed
+            TEXT="The agent job failed before the agent finished."
+          elif [ "$PUBLISHED" = "true" ]; then
+            RESULT="$AGENT"
+            TEXT="Opened $PR_URL (agent result: $AGENT)."
+            if [ "$PUBLISH_REASON" = "opened_oversized" ]; then
+              if [ "$AGENT" = "ok" ]; then RESULT=oversized; fi
+              TEXT="Opened $PR_URL as a draft, because the patch is over the size limit (agent result: $AGENT). Split the issue, or review it with care."
+            fi
+          elif [ "$PUBLISH_REASON" = "no_change" ]; then
+            RESULT="no_change"
+            if [ "$AGENT" != "ok" ]; then RESULT="$AGENT"; fi
+            TEXT="The agent finished with no changes (agent result: $AGENT)."
+          else
+            RESULT="publish_failed"
+            TEXT="The patch wasn't published. Reason: ${PUBLISH_REASON:-unknown} (agent result: ${AGENT:-unknown})."
+          fi
+          gh issue comment "$ISSUE" --body "$TEXT Estimated cost: \$${COST:-0}. Run: $RUN_URL" || echo "::warning::Couldn't comment on the issue"
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          NAME="${RUN_ID:-run_${GITHUB_RUN_ID}}"
+          jq -n --arg e agent_finished --arg run "$NAME" --arg t "$TENANT" --arg p "$PROJECT" --arg i "$ISSUE" \
+            --arg r "$RESULT" --arg c "${COST:-0}" --arg s "$STARTED" --arg at "$NOW" --arg b "$BASE_SHA" --arg u "$PR_URL" \
+            '{schema_version:1,event:$e,run_id:$run,tenant:$t,project:$p,issue:$i,result:$r,cost_usd_est:($c|tonumber? // 0),started_at:$s,at:$at,sha:$b,pr_url:$u}' > event.json
+          gh api -X PUT "repos/$GH_REPO/contents/events/${NOW%%T*}/$NAME-agent_finished.json" \
+            -f branch=run-log -f message="log: $NAME agent_finished" -f content="$(base64 -w0 event.json)" > /dev/null \
+            || echo "::warning::Couldn't write the run log"
