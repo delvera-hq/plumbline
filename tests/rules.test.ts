@@ -50,6 +50,44 @@ describe("parseUtc", () => {
     expect(parseUtc("not a date")).toBeNull();
     expect(parseUtc("2026-02-31")).toBeNull();
   });
+
+  test("reads Jira's +0000 offset form", () => {
+    expect(parseUtc("2026-11-10T09:00:00.000+0000")).toBe(Date.UTC(2026, 10, 10, 9));
+  });
+
+  test("returns null for an impossible month", () => {
+    expect(parseUtc("2026-13-01")).toBeNull();
+    expect(parseUtc("2026-00-10")).toBeNull();
+  });
+
+  test("returns null for an impossible day", () => {
+    expect(parseUtc("2026-11-00")).toBeNull();
+    expect(parseUtc("2026-11-31")).toBeNull();
+  });
+
+  test("returns null for an impossible hour", () => {
+    expect(parseUtc("2026-11-10T25:00:00Z")).toBeNull();
+    expect(parseUtc("2026-11-10T24:00:00Z")).toBeNull();
+  });
+
+  test("returns null for an impossible minute", () => {
+    expect(parseUtc("2026-11-10T09:60:00Z")).toBeNull();
+  });
+
+  test("returns null for an impossible second", () => {
+    expect(parseUtc("2026-11-10T09:00:60Z")).toBeNull();
+  });
+
+  test("returns null for an offset hour over 23 or offset minute over 59", () => {
+    expect(parseUtc("2026-11-10T09:00:00+24:00")).toBeNull();
+    expect(parseUtc("2026-11-10T09:00:00-99:00")).toBeNull();
+    expect(parseUtc("2026-11-10T09:00:00+01:60")).toBeNull();
+    expect(parseUtc("2026-11-10T09:00:00+0160")).toBeNull();
+  });
+
+  test("accepts the largest valid field values", () => {
+    expect(parseUtc("2026-12-31T23:59:59+23:59")).toBe(Date.UTC(2026, 11, 31, 23, 59, 59) - (23 * 60 + 59) * 60_000);
+  });
 });
 
 describe("findDrift", () => {
@@ -105,6 +143,32 @@ describe("findDrift", () => {
         now,
       });
       expect(rulesIn(findings)).not.toContain("DUE_SOON_NO_ACTIVITY");
+    });
+
+    test("records the now timestamp and stale cutoff in its evidence as ISO 8601 UTC", () => {
+      const findings = findDrift([plan({ dueDate: "2026-11-15" })], [issue({ updatedAt: "2026-10-01T00:00:00Z" })], {
+        now,
+      });
+      const finding = findings.find((f) => f.rule === "DUE_SOON_NO_ACTIVITY");
+      expect(finding?.evidence).toContainEqual({ id: "PLAN-1", field: "now", value: "2026-11-11T12:00:00.000Z" });
+      expect(finding?.evidence).toContainEqual({
+        id: "PLAN-1",
+        field: "staleCutoff",
+        value: "2026-11-04T12:00:00.000Z",
+      });
+    });
+
+    test("the stale cutoff follows staleDays", () => {
+      const findings = findDrift([plan({ dueDate: "2026-11-15" })], [issue({ updatedAt: "2026-10-01T00:00:00Z" })], {
+        now,
+        staleDays: 3,
+      });
+      const finding = findings.find((f) => f.rule === "DUE_SOON_NO_ACTIVITY");
+      expect(finding?.evidence).toContainEqual({
+        id: "PLAN-1",
+        field: "staleCutoff",
+        value: "2026-11-08T12:00:00.000Z",
+      });
     });
 
     test("does not fire when the updatedAt of a linked issue is missing", () => {
