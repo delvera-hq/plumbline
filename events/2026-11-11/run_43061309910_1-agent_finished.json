@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "event": "agent_finished",
+  "run_id": "run_43061309910_1",
+  "tenant": "internal",
+  "project": "plumbline",
+  "issue": "2",
+  "result": "publish_failed",
+  "cost_usd_est": 0.006931639999999999,
+  "started_at": "2026-11-11T16:44:42Z",
+  "at": "2026-11-11T16:47:38Z",
+  "sha": "f35cb0ce516dac34c5e1e2923fb327f97a84b1c3",
+  "pr_url": ""
+}
