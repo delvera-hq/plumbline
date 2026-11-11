@@ -1,0 +1,11 @@
+{
+  "key": "ENG-1",
+  "fields": {
+    "status": {
+      "name": "In Progress",
+      "statusCategory": { "key": "indeterminate" }
+    },
+    "duedate": "2026-12-01",
+    "updated": "2026-11-10T09:00:00.000+0000"
+  }
+}
