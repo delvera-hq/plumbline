@@ -74,6 +74,7 @@ def print_run_fields(model: str, prompt_file: pathlib.Path, trace_path: str | No
     if trace_path and LAST_CALL:
         with gzip.open(trace_path, "wt") as f:
             json.dump(LAST_CALL["trace"], f)
+            f.write("\n")  # One JSON line, so the trace is JSONL like the agent's.
     print(f"model={LAST_CALL.get('model', model)}")
     print("harness=anthropic-sdk")
     print(f"harness_version={anthropic.__version__}")
