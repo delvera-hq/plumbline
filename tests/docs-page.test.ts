@@ -13,13 +13,14 @@ test("docs page has a Drift rules section with an introduction", () => {
   );
 });
 
-test("the first three drift rules appear in src/rules.ts order, each with a heading", () => {
+test("every drift rule appears in src/rules.ts order, each with a heading", () => {
   const ruleNames = [...rulesSource.matchAll(/^\s*\| "([A-Z_]+)"/gm)].map((match) => match[1]);
-  expect(headings).toEqual(ruleNames.slice(0, 3));
+  expect(ruleNames).toHaveLength(6);
+  expect(headings).toEqual(ruleNames);
 });
 
 test("each rule entry has an explanation and a made-up example", () => {
-  expect(headings).toHaveLength(3);
+  expect(headings).toHaveLength(6);
   const sections = html.split("<h3>").slice(1);
   for (const section of sections) {
     expect(section).toContain("<p>Fires when");
