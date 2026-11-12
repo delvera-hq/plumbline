@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { findDrift, type PlanItem, type WorkIssue } from "./rules";
+import { findDrift, type PlanItem, type WorkIssue } from "./rules.js";
 
 /** Everything the tools read: the plan items and the Jira issues they link to. */
 export interface PlanData {

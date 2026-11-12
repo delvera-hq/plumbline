@@ -1,4 +1,4 @@
-import type { StatusClass, WorkIssue } from "./rules";
+import type { StatusClass, WorkIssue } from "./rules.js";
 
 /** The fields of a Jira issue that the plan comparison reads. */
 export interface JiraIssue {
