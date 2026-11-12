@@ -1,0 +1,25 @@
+{
+ "schema_version": "1.0",
+ "event_id": "evt_01M7835E8CAK2KH8YJ0ZS4BX4D",
+ "type": "pr.closed",
+ "occurred_at": "2026-11-12T14:39:07Z",
+ "producer": {
+  "kind": "controller",
+  "id": "delvera-hq/plumbline/run-log.yml:pr-closed",
+  "workflow_ref": "delvera-hq/plumbline/.github/workflows/run-log.yml@refs/heads/main",
+  "github_run_id": "43239387628"
+ },
+ "authority": "controller",
+ "correlation": {
+  "run_id": "run_43235505387_1",
+  "tenant": "internal",
+  "project": "plumbline"
+ },
+ "data_schema": "events/pr.closed.v1",
+ "data": {
+  "merged_by": "dondlvra",
+  "sha": "dce337a35c4031d1226d93b94c0bfdf24910ec0b",
+  "pr": 49,
+  "merged": true
+ }
+}
