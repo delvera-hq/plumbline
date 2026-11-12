@@ -61,6 +61,19 @@ test("docs page has a Settings section naming each environment variable in a lis
   expect(html).toContain("reads these once at startup and stops with a message naming any missing or invalid setting.");
 });
 
+test("docs page has a Read-only tokens section for monday.com and Jira", () => {
+  expect(html).toContain("<h2>Read-only tokens</h2>");
+  expect(html).toContain(
+    "<strong>monday.com:</strong> use an API token for a user with view-only access to the plan board. Plumbline only sends GraphQL queries and refuses mutations.",
+  );
+  expect(html).toContain(
+    "<strong>Jira:</strong> use an API token for an account that can only browse the projects involved. Plumbline only sends GET requests and the JQL search.",
+  );
+  expect(html).toContain(
+    "Plumbline enforces read-only requests in code. A token that cannot write is a second line of defence if that check is ever bypassed.",
+  );
+});
+
 test("the docs page adds no scripts or inline event handlers", () => {
   expect(html).not.toMatch(/<script/i);
   expect(html).not.toMatch(/\son[a-z]+\s*=/i);
