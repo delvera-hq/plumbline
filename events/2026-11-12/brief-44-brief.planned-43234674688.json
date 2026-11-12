@@ -1,0 +1,40 @@
+{
+ "schema_version": "1.0",
+ "event_id": "evt_01M781N3ZQS95BMQHQEE1EFGR2",
+ "type": "brief.planned",
+ "occurred_at": "2026-11-12T14:12:44Z",
+ "producer": {
+  "kind": "controller",
+  "id": "delvera-hq/plumbline/brief.yml:create",
+  "workflow_ref": "delvera-hq/plumbline/.github/workflows/brief.yml@refs/heads/main",
+  "github_run_id": "43234674688"
+ },
+ "authority": "controller",
+ "correlation": {
+  "run_id": "run_43234674688_1",
+  "tenant": "internal",
+  "project": "plumbline",
+  "issue": "delvera-hq/plumbline#44"
+ },
+ "data_schema": "events/brief.planned.v1",
+ "data": {
+  "result": "planned",
+  "model": "claude-opus-5-5",
+  "harness": "anthropic-sdk",
+  "harness_version": "1.17.0",
+  "template_version": "v0.1.13",
+  "prompt_sha": "266d9f408260187f",
+  "kind": "product",
+  "trace": "traces/2026-11-12/run_43234674688_1-planner.jsonl.gz",
+  "tokens_in": 3096,
+  "tokens_out": 1957,
+  "turns": 1,
+  "cost_usd_est": 0.0515,
+  "duration_s": 17.24,
+  "tasks": [
+   45,
+   46,
+   47
+  ]
+ }
+}
