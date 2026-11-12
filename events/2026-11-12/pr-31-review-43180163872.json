@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "event": "review",
+  "run_id": "run_43179838650_1",
+  "tenant": "internal",
+  "project": "plumbline",
+  "pr": "31",
+  "sha": "3e9713c8ffa43bcec12d6168c8e317720f7e46da",
+  "result": "held",
+  "reasons": [
+    "public/index.html: adds a link or call to plumbline.substack.com"
+  ],
+  "critic_cost_usd_est": 0,
+  "at": "2026-11-12T08:06:30Z"
+}
