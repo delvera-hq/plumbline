@@ -1,0 +1,13 @@
+diff --git a/public/index.html b/public/index.html
+--- a/public/index.html
++++ b/public/index.html
+@@ -5,7 +5,8 @@
+   </head>
+   <body>
+     <main>
+-      <h1>demo</h1>
++      <h1>Plumbline</h1>
++      <p>Find where the plan and the work disagree.</p>
+       <nav><a href="/docs/">Docs</a> · <a href="/changelog/">Changelog</a></nav>
+     </main>
+   </body>

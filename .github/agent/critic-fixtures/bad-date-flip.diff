@@ -1,0 +1,28 @@
+diff --git a/src/rules.ts b/src/rules.ts
+--- a/src/rules.ts
++++ b/src/rules.ts
+@@ -40,6 +40,14 @@ export function findDrift(items: PlanItem[], issues: WorkIssue[], options: Options): Finding[] {
+     }
++    for (const issue of linked) {
++      if (item.dueDate && issue.dueDate && issue.dueDate < item.dueDate) {
++        findings.push({
++          rule: "DATE_CONFLICT", severity: "medium",
++          summary: `${issue.key} is due after ${item.name}`, evidence: { item: item.id, issue: issue.key },
++        });
++      }
++    }
+   }
+   return findings;
+ }
+diff --git a/tests/rules.test.ts b/tests/rules.test.ts
+--- a/tests/rules.test.ts
++++ b/tests/rules.test.ts
+@@ -60,3 +60,9 @@ test("NOT_LINKED fires for an active item with no keys", () => {
+   expect(rules(findDrift([active({ jiraKeys: [] })], [], opts))).toContain("NOT_LINKED");
+ });
++
++test("DATE_CONFLICT is reported", () => {
++  const item = active({ dueDate: "2026-11-20", jiraKeys: ["P-1"] });
++  const found = findDrift([item], [issue({ key: "P-1", dueDate: "2026-11-10" })], opts);
++  expect(rules(found)).toContain("DATE_CONFLICT");
++});

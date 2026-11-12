@@ -55,6 +55,14 @@ def summarize(events, since, touch_fn=None):
     closed = {e.get("run_id"): e for e in events if e["event"] == "pr_closed" and e.get("run_id")}
     deploys = {e.get("sha"): e for e in events if e["event"] == "deployed"}
     recent_deploys = [e for e in events if e["event"] == "deployed" and stamp(e["at"]) >= since]
+    reviews = [e for e in events if e["event"] == "review" and stamp(e["at"]) >= since]
+    critic_cost = sum(float(e.get("critic_cost_usd_est") or 0) for e in reviews)
+    held_reasons = {}
+    for e in reviews:
+        if e.get("result") == "held":
+            for reason in e.get("reasons") or ["no reason recorded"]:
+                key = reason.split(": ", 1)[-1] if reason.startswith(("src/", "public/", "tests/")) else reason
+                held_reasons[key] = held_reasons.get(key, 0) + 1
 
     results, cost, merged, live, hours, touch_total, touch_known, no_touch = {}, 0.0, 0, 0, [], 0, 0, []
     for run in runs:
@@ -88,16 +96,20 @@ def summarize(events, since, touch_fn=None):
         f"| Deploys, all causes | {len(recent_deploys)}, of which failed: {sum(e.get('result') != 'ok' for e in recent_deploys)} |",
         f"| Rolled back by the probe | {sum(e.get('result') in ROLLED for e in recent_deploys)}, of which unconfirmed: {sum(e.get('result') in ('rollback_failed', 'rollback_unverified') for e in recent_deploys)} |",
         f"| Automatic revert PRs | {sum(bool(e.get('revert_pr')) and e.get('revert') in ('auto_merge', 'needs_merge') for e in recent_deploys)} |",
-        f"| LLM spend, client-side estimate | ${cost:.2f} |",
-        f"| Estimated cost per live change | {f'${cost / live:.2f}' if live else 'n/a'} |",
+        f"| Auto-merged by path 4 | {sum(e.get('result') == 'auto_merged' for e in reviews)}, held for a Director: {sum(e.get('result') == 'held' for e in reviews)} |",
+        f"| LLM spend, client-side estimate | ${cost + critic_cost:.2f}, of which the Critic: ${critic_cost:.2f} |",
+        f"| Estimated cost per live change | {f'${(cost + critic_cost) / live:.2f}' if live else 'n/a'} |",
         f"| Median hours from agent start to live | {f'{statistics.median(hours):.1f}' if hours else 'n/a'} |",
         f"| Director touches per merged PR | {f'{touch_total / touch_known:.1f}' if touch_known else 'n/a'} |",
     ]
     bad = [e for e in recent_deploys if e.get("result") in ("rollback_failed", "rollback_unverified")]
     if bad:
         lines += ["", f"**Rollback not confirmed:** releases {', '.join(e.get('sha', '?')[:7] for e in bad)}. Check what's live."]
+    if held_reasons:
+        top = sorted(held_reasons.items(), key=lambda kv: -kv[1])[:5]
+        lines += ["", "**Why PRs were held:** " + "; ".join(f"{k} ({v})" for k, v in top) + "."]
     if no_touch:
-        lines += ["", f"**Merged with no recorded Director touch:** PRs {', '.join(f'#{n}' for n in no_touch)}. Merges come from a person on this path, so check these: an App token may have merged them."]
+        lines += ["", f"**Merged with no recorded Director touch:** PRs {', '.join(f'#{n}' for n in no_touch)}. A Director's label should start every run, so check these: an App token may have started or merged them."]
     lines += ["", "Cost is Claude Code's estimate. Compare it with Console spend now and then: a large gap can mean a stolen key.", "", "Optional: reply with your rough Director minutes this week. It's fine to skip."]
     return "\n".join(lines)
 
