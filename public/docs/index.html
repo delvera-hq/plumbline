@@ -18,6 +18,18 @@
       <h3>DUE_SOON_NO_ACTIVITY</h3>
       <p>Fires when a plan item that is not done is due within seven days, or is already overdue, and none of its open linked issues has changed in the last seven days. Items with no due date, or with no open linked issues, do not fire this rule. Severity is high.</p>
       <p><strong>Example:</strong> Plan item PLAN-4 "Billing reminders" is due 2026-11-14. Its open issues DEMO-18 and DEMO-19 were last updated on 2026-10-30, so Plumbline reports that no work has moved ahead of the deadline.</p>
+
+      <h3>DATE_CONFLICT</h3>
+      <p>Fires when a plan item has a due date and one or more of its linked Jira issues is due on a later day. Dates are compared by UTC calendar day. Items with no due date, and issues with no due date, do not fire this rule. Severity is medium.</p>
+      <p><strong>Example:</strong> Plan item PLAN-2 "Onboarding emails" is due 2026-11-20, but its linked issue DEMO-40 is due 2026-11-27, so Plumbline reports DEMO-40 as due after its plan item.</p>
+
+      <h3>NOT_LINKED</h3>
+      <p>Fires when a plan item is active but has no Jira keys at all. Done and not-started items do not fire this rule. Severity is low.</p>
+      <p><strong>Example:</strong> Plan item PLAN-6 "Team calendar sync" is In Progress, but nobody has added a Jira key to it, so Plumbline reports that it has no linked work.</p>
+
+      <h3>KEY_NOT_FOUND</h3>
+      <p>Fires when a plan item names one or more Jira keys that do not match any issue Plumbline was given. Severity is medium.</p>
+      <p><strong>Example:</strong> Plan item PLAN-8 "Audit log export" names DEMO-50 and DEMO-51, but only DEMO-50 is in the supplied issues, so Plumbline reports DEMO-51 as not found.</p>
     </section>
   </body>
 </html>
