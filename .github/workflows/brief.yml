@@ -113,7 +113,7 @@ jobs:
             printf '\nPlanner cost about $%s. Run: %s\n' "$COST" "$RUN_URL" >> summary.md
             gh issue comment "$BRIEF" --body-file summary.md
             FIRST=$(awk '{print $1}' <<<"$NUMBERS")
-            gh workflow run agent.yml -f issue="$FIRST"
+            gh workflow run agent.yml --ref main -f issue="$FIRST"
             RESULT=planned
           else
             {
@@ -141,6 +141,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
+      contents: read # gh workflow run reads the default branch.
       issues: write
       actions: write
     steps:
@@ -182,7 +183,7 @@ jobs:
             gh issue comment "$BRIEF" --body "Step $K of $M (#$ISSUE) is done, but I can't find step $WANT open, so the chain stopped."
             exit 0
           fi
-          gh workflow run agent.yml -f issue="$NEXT"
+          gh workflow run agent.yml --ref main -f issue="$NEXT"
           gh issue comment "$BRIEF" --body "Step $K of $M (#$ISSUE) is done. Started step $WANT, #$NEXT."
 
   stopped:
