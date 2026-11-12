@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { type FetchLike, jiraRequest, mondayQuery, readJira, readMonday } from "../src/clients";
+import { assertMondayQuery, type FetchLike, jiraRequest, mondayQuery, readJira, readMonday } from "../src/clients";
 import type { MondayOptions } from "../src/monday";
 
 const MONDAY_TOKEN = "mon-secret-token-111";
@@ -75,17 +75,25 @@ describe("monday.com reads are always GraphQL queries", () => {
     ["a lower-case mutation keyword", "mutation{ change_column_value(item_id: 1) { id } }"],
     ["a subscription", "subscription { changed_item { id } }"],
     ["a document that does not start with query", "fragment F on Board { id } { boards { id } }"],
+    ["a mutation hidden after a comment", 'query { me { id } } # "\nmutation { delete_item(item_id: 1) { id } } # "'],
+    ["a mutation in a block string", 'query { me { id } } """\nmutation { delete_item(item_id: 1) { id } }\n"""'],
+    ["a mutation after a comment", "query { me { id } } # hidden\nmutation { delete_item(item_id: 1) { id } }"],
+    ["two queries in one document", "query { boards { id } } query { me { id } }"],
+    ["a lone mutation", "mutation { delete_item(item_id: 1) { id } }"],
+    ["a string literal", 'query { boards(ids: [1]) { name(format: "plain") } }'],
   ])("refuses %s before sending", async (_label, document) => {
     const fetch = fakeFetch(json(firstPage(null, [])));
     await expect(mondayQuery(document, {}, { fetch, env })).rejects.toThrow("monday.com request refused");
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  test("allows the word mutation inside a string literal", async () => {
-    const fetch = fakeFetch(json(firstPage(null, [])));
-    const document = 'query { items_page(query_params: { rules: [{ value: "mutation" }] }) { cursor } }';
-    await mondayQuery(document, {}, { fetch, env });
-    expect(fetch).toHaveBeenCalledTimes(1);
+  test.each([
+    ["a named query with variables", "query Items($boardId: [ID!]!, $limit: Int!) { boards(ids: $boardId) { id } }"],
+    ["an unnamed query", "query { boards { id } }"],
+    ["a shorthand query", "{ me { id } }"],
+    ["a query with a line break", "query {\n  boards(ids: [1]) {\n    id\n  }\n}\n"],
+  ])("accepts %s", (_label, document) => {
+    expect(() => assertMondayQuery(document)).not.toThrow();
   });
 
   test("readMonday sends only query documents on every page", async () => {
