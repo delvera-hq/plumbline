@@ -1,0 +1,30 @@
+diff --git a/src/stale.ts b/src/stale.ts
+--- a/src/stale.ts
++++ b/src/stale.ts
+@@ -1,5 +1,8 @@
+ const DAY_MS = 86_400_000;
+ 
+ export function isStale(updatedAt: Date, now: Date, staleDays: number): boolean {
+-  if (staleDays <= 0) throw new RangeError("staleDays must be positive");
++  if (staleDays < 0) throw new RangeError("staleDays can't be negative");
++  if (staleDays === 0) {
++    return updatedAt.toISOString().slice(0, 10) < now.toISOString().slice(0, 10);
++  }
+   return now.getTime() - updatedAt.getTime() > staleDays * DAY_MS;
+ }
+diff --git a/tests/stale.test.ts b/tests/stale.test.ts
+--- a/tests/stale.test.ts
++++ b/tests/stale.test.ts
+@@ -8,3 +8,13 @@ test("an issue older than staleDays is stale", () => {
+   expect(isStale(new Date("2026-11-01T00:00:00Z"), now, 7)).toBe(true);
+ });
++
++test("zero staleDays makes yesterday's issue stale", () => {
++  const now = new Date("2026-11-12T09:00:00Z");
++  expect(isStale(new Date("2026-11-11T23:00:00Z"), now, 0)).toBe(true);
++  expect(isStale(new Date("2026-11-12T01:00:00Z"), now, 0)).toBe(false);
++});
++
++test("negative staleDays throws", () => {
++  expect(() => isStale(new Date(), new Date(), -1)).toThrow(RangeError);
++});

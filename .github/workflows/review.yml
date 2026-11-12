@@ -1,0 +1,217 @@
+# Path 4. When ci passes on an agent PR, this decides whether it can merge with no person looking.
+# 1. risk.py, plain code: the PR is the App's, small, touches no protected path or dependency, and adds no form,
+#    payment, tracking, secret or new outbound host. Two automatic reverts in 7 days pause it all.
+# 2. critic.py: one LLM review with no tools, against the issue's acceptance criteria.
+# 3. If both pass, the App merges, bound to the reviewed commit. Path 3's probe and rollback catch what slips through.
+# Anything else leaves the PR for a Director, with a comment saying why. Nothing here runs PR code.
+# Turn it on with the repo variable AUTO_MERGE=true. Run it by hand for the Critic's seeded-defect self-test.
+name: review
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: review-${{ github.event.workflow_run.head_branch || 'selftest' }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: >-
+      github.event_name == 'workflow_run' && vars.AUTO_MERGE == 'true'
+      && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request'
+      && startsWith(github.event.workflow_run.head_branch, 'agent/')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: agent-llm # Holds only the Anthropic key, and is limited to main. workflow_run runs on main.
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    outputs:
+      pr: ${{ steps.facts.outputs.pr }}
+      sha: ${{ steps.facts.outputs.sha }}
+      run_id: ${{ steps.facts.outputs.run_id }}
+      decision: ${{ steps.decide.outputs.decision }}
+      reasons: ${{ steps.decide.outputs.reasons }}
+      cost: ${{ steps.critic.outputs.cost_usd_est }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/agent/
+      - name: Install the Anthropic SDK, with no key in reach
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet --disable-pip-version-check "anthropic==1.17.0"
+      - id: facts
+        name: Read the PR from GitHub's record, never from its code
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::odd head sha"; exit 1; }
+          PR=$(gh api "repos/$GH_REPO/commits/$SHA/pulls" --jq "[.[] | select(.state == \"open\" and .head.sha == \"$SHA\")][0].number // empty")
+          if [ -z "$PR" ]; then echo "No open PR has head $SHA any more. Nothing to do."; exit 0; fi
+          gh api "repos/$GH_REPO/pulls/$PR" > pr.json
+          gh api --paginate --slurp "repos/$GH_REPO/pulls/$PR/files" > files.json
+          gh api -H "Accept: application/vnd.github.diff" "repos/$GH_REPO/pulls/$PR" > diff.txt
+          ISSUE=$(sed -nE 's#^agent/issue-([0-9]+)-.*#\1#p' <<<"$BRANCH")
+          if [ -n "$ISSUE" ]; then
+            gh api "repos/$GH_REPO/issues/$ISSUE" --jq '"# " + .title + "\n\n" + (.body // "")' > task.md
+          else
+            echo "No issue found for this branch." > task.md
+          fi
+          SINCE=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          gh pr list --state merged --limit 100 --json headRefName,mergedAt \
+            --jq "[.[] | select((.headRefName | startswith(\"revert/\")) and .mergedAt >= \"$SINCE\")] | length" > reverts.txt
+          RUN_ID=$(jq -r '.body // ""' pr.json | grep -oE '^run_id: run_[0-9]+_[0-9]+' | head -1 | cut -d' ' -f2) || RUN_ID=""
+          { echo "pr=$PR"; echo "sha=$SHA"; echo "run_id=$RUN_ID"; } >> "$GITHUB_OUTPUT"
+      - id: risk
+        if: steps.facts.outputs.pr != ''
+        name: Deterministic checks
+        env:
+          KNOWN_HOSTS: ${{ vars.KNOWN_HOSTS }}
+          URL: ${{ vars.PRODUCTION_URL }}
+        run: |
+          set -euo pipefail
+          HOSTS="$KNOWN_HOSTS $(sed -E 's#^https?://([^/]+).*#\1#' <<<"$URL")"
+          python3 -I .github/agent/risk.py --pr pr.json --files files.json --reverts "$(cat reverts.txt)" \
+            --known-hosts "$HOSTS" > risk.json
+          cat risk.json
+          echo "eligible=$(jq -r .eligible risk.json)" >> "$GITHUB_OUTPUT"
+      - id: critic
+        if: steps.risk.outputs.eligible == 'true'
+        name: The Critic reviews the diff against the issue
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CRITIC_MODEL: ${{ vars.CRITIC_MODEL }}
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/venv/bin/python" -I .github/agent/critic.py --task task.md --diff diff.txt --out verdict.json \
+            | tee critic.out
+          jq . verdict.json
+          grep -E '^(pass|cost_usd_est)=' critic.out >> "$GITHUB_OUTPUT"
+      - id: decide
+        if: steps.facts.outputs.pr != ''
+        env:
+          CRITIC_PASS: ${{ steps.critic.outputs.pass }}
+        run: |
+          set -euo pipefail
+          REASONS=$(jq -c '.reasons' risk.json)
+          if [ -f verdict.json ]; then REASONS=$(jq -c --argjson r "$REASONS" '$r + .reasons' verdict.json); fi
+          DECISION=hold
+          if [ "$(jq -r .eligible risk.json)" = "true" ] && [ "$CRITIC_PASS" = "true" ] && [ "$REASONS" = "[]" ]; then
+            DECISION=merge
+          fi
+          echo "Decision: $DECISION $REASONS"
+          echo "decision=$DECISION" >> "$GITHUB_OUTPUT"
+          echo "reasons=$(base64 -w0 <<<"$REASONS")" >> "$GITHUB_OUTPUT"
+
+  merge:
+    needs: review
+    if: needs.review.outputs.pr != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: agent-publish # Holds only the App key.
+    permissions: {}
+    outputs:
+      result: ${{ steps.act.outputs.result }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - id: act
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ needs.review.outputs.pr }}
+          SHA: ${{ needs.review.outputs.sha }}
+          DECISION: ${{ needs.review.outputs.decision }}
+          REASONS: ${{ needs.review.outputs.reasons }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          LIST=$(base64 -d <<<"$REASONS" | jq -r '.[] | "- " + .')
+          if [ "$DECISION" = "merge" ]; then
+            # Bound to the reviewed commit: a push after the review makes this fail rather than merge unreviewed code.
+            if gh pr merge "$PR" --squash --match-head-commit "$SHA"; then
+              echo result=auto_merged >> "$GITHUB_OUTPUT"
+              gh pr comment "$PR" --body "Merged with no Director: the checks and the Critic passed for ${SHA:0:7}. If the release fails its probe, it rolls back and reverts by itself. Run: $RUN_URL" || echo "::warning::Couldn't comment on the PR"
+              exit 0
+            fi
+            echo result=merge_failed >> "$GITHUB_OUTPUT"
+            gh pr comment "$PR" --body "The checks and the Critic passed, but the merge failed. It needs a Director. Run: $RUN_URL" || echo "::warning::Couldn't comment on the PR"
+            exit 0
+          fi
+          echo result=held >> "$GITHUB_OUTPUT"
+          gh pr comment "$PR" --body "$(printf 'Left for a Director to merge, for these reasons:\n\n%s\n\nRun: %s\n' "${LIST:-- no reason recorded}" "$RUN_URL")" || echo "::warning::Couldn't comment on the PR"
+
+  record:
+    needs: [review, merge]
+    if: always() && needs.review.outputs.pr != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: write # Only for the run-log branch. Its pushes trigger no workflow, as they use GITHUB_TOKEN.
+    steps:
+      - name: Write the review event
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ needs.review.outputs.pr }}
+          SHA: ${{ needs.review.outputs.sha }}
+          RUN_ID: ${{ needs.review.outputs.run_id }}
+          RESULT: ${{ needs.merge.outputs.result || 'failed' }}
+          REASONS: ${{ needs.review.outputs.reasons }}
+          COST: ${{ needs.review.outputs.cost || '0' }}
+          TENANT: ${{ vars.TENANT || 'internal' }}
+          PROJECT: ${{ vars.PROJECT || github.event.repository.name }}
+        run: |
+          set -uo pipefail
+          R=$(base64 -d <<<"$REASONS" 2>/dev/null | jq -c . 2>/dev/null) || R='[]'
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          jq -n --arg e review --arg run "$RUN_ID" --arg t "$TENANT" --arg p "$PROJECT" --arg pr "$PR" --arg sha "$SHA" \
+            --arg r "$RESULT" --argjson reasons "${R:-[]}" --arg cost "$COST" --arg at "$NOW" \
+            '{schema_version:1,event:$e,run_id:$run,tenant:$t,project:$p,pr:$pr,sha:$sha,result:$r,reasons:$reasons,
+              critic_cost_usd_est:($cost|tonumber? // 0),at:$at}' > event.json
+          gh api -X PUT "repos/$GH_REPO/contents/events/${NOW%%T*}/pr-$PR-review-$GITHUB_RUN_ID.json" \
+            -f branch=run-log -f message="log: PR $PR review $RESULT" -f content="$(base64 -w0 event.json)" > /dev/null \
+            || echo "::warning::Couldn't write the run log"
+
+  selftest:
+    # Seeded defects: the Critic must pass the good cases and fail the bad ones. Run it by hand, and after any
+    # change to the prompt or the model.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: agent-llm
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/agent/
+      - name: Install the Anthropic SDK, with no key in reach
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet --disable-pip-version-check "anthropic==1.17.0"
+      - env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CRITIC_MODEL: ${{ vars.CRITIC_MODEL }}
+        run: |
+          set -o pipefail
+          "$RUNNER_TEMP/venv/bin/python" -I .github/agent/critic.py --selftest .github/agent/critic-fixtures | tee -a "$GITHUB_STEP_SUMMARY"
