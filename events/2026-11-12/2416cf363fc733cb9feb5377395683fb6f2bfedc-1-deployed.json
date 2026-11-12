@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "event": "deployed",
+  "tenant": "internal",
+  "project": "plumbline",
+  "sha": "2416cf363fc733cb9feb5377395683fb6f2bfedc",
+  "result": "rolled_back",
+  "cf_version_id": "51c0573d-c4fe-47b1-ba3e-6343cea616be",
+  "probe": "failure",
+  "baseline_ok": true,
+  "rolled_back_to": "29867b4a-f42a-4846-abb5-e6b937fee303",
+  "revert": "auto_merge",
+  "revert_pr": "https://github.com/delvera-hq/plumbline/pull/25",
+  "at": "2026-11-12T07:11:32Z"
+}
