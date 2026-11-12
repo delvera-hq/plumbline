@@ -1,8 +1,8 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { readJira, readMonday } from "./clients";
-import type { MondayOptions } from "./monday";
-import { createServer, type PlanData } from "./server";
+import { readJira, readMonday } from "./clients.js";
+import type { MondayOptions } from "./monday.js";
+import { createServer, type PlanData } from "./server.js";
 
 // The project has no Node type definitions, so declare the one part of process this file reads.
 declare const process: { env: Record<string, string | undefined> };
