@@ -160,6 +160,12 @@ jobs:
         with:
           name: agent-tree
           path: ${{ runner.temp }}/in
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "24"
+          package-manager-cache: false # v5 caches by default, and calls pnpm before it's installed.
+      - name: Install pnpm, at the base commit's version, before the agent's files arrive
+        run: npm install --global "pnpm@$(jq -r '.packageManager | split("@")[1]' package.json)"
       - name: Export patch
         run: |
           set -euo pipefail
@@ -173,6 +179,17 @@ jobs:
           git ls-files --others --exclude-standard -z | while IFS= read -r -d '' f; do
             if [[ "$f" != */* && -f "$f" && ! -s "$f" ]]; then echo "Dropping empty $f"; rm -f -- "$f"; fi
           done
+          # The sandbox also blocks writes to pnpm-lock.yaml, so a dependency the agent adds never reaches it.
+          # Resolve it here, in an empty folder holding only package.json and the lockfile, so no config file the
+          # agent wrote can steer pnpm, and with no scripts or pnpmfile hooks. The gate still checks the result.
+          if ! git diff --quiet HEAD -- package.json; then
+            LOCK="$RUNNER_TEMP/lock"
+            mkdir "$LOCK"
+            cp package.json pnpm-lock.yaml "$LOCK/"
+            (cd "$LOCK" && pnpm install --lockfile-only --ignore-scripts --ignore-pnpmfile)
+            cp "$LOCK/pnpm-lock.yaml" pnpm-lock.yaml
+            echo "Resolved pnpm-lock.yaml for the package.json change"
+          fi
           git add -A
           git diff --cached --binary --no-renames > agent.patch
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
