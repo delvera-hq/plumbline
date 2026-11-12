@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "event": "review",
+  "run_id": "run_43209908245_1",
+  "tenant": "internal",
+  "project": "plumbline",
+  "pr": "40",
+  "sha": "48f742c4130d1b652a175b3df4dd0215879c57cf",
+  "result": "auto_merged",
+  "reasons": [],
+  "critic_cost_usd_est": 0.0177,
+  "at": "2026-11-12T11:34:49Z"
+}
