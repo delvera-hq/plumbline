@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "event": "agent_finished",
+  "run_id": "run_43163275689_1",
+  "tenant": "internal",
+  "project": "plumbline",
+  "issue": "17",
+  "result": "ok",
+  "cost_usd_est": 0.046182105,
+  "started_at": "2026-11-12T05:43:35Z",
+  "at": "2026-11-12T05:48:13Z",
+  "sha": "3bbff6297782b57366db5754a66c21e56ba1aaaa",
+  "pr_url": "https://github.com/delvera-hq/plumbline/pull/18"
+}
