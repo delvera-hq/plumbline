@@ -1,0 +1,31 @@
+diff --git a/public/docs/index.html b/public/docs/index.html
+--- a/public/docs/index.html
++++ b/public/docs/index.html
+@@ -8,5 +8,11 @@
+     <h1>Docs</h1>
+     <p>How Plumbline works.</p>
++    <section id="drift-rules">
++      <h2>Drift rules</h2>
++      <h3>NOT_LINKED</h3>
++      <p>An active plan item has no linked Jira issue.</p>
++      <p>Example: the item "Launch beta" is active, but no key like DEMO-12 is linked to it.</p>
++    </section>
+   </body>
+ </html>
+diff --git a/tests/docs-page.test.ts b/tests/docs-page.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/docs-page.test.ts
+@@ -0,0 +1,12 @@
++import { readFileSync } from "node:fs";
++import { expect, test } from "vitest";
++
++const html = readFileSync("public/docs/index.html", "utf8");
++
++test("docs page explains NOT_LINKED with an example", () => {
++  expect(html).toContain("Drift rules");
++  expect(html).toContain("NOT_LINKED");
++  expect(html).toContain("DEMO-12");
++});
++
++test("docs page has no scripts", () => expect(html).not.toMatch(/<script/i));
