@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "event": "pr_closed",
+  "run_id": "run_43163275689_1",
+  "tenant": "internal",
+  "project": "plumbline",
+  "pr": "18",
+  "merged": false,
+  "merged_by": "",
+  "sha": "567c62047b89968edeb03b852af6165b2f3cb6bb",
+  "at": "2026-11-12T05:56:54Z"
+}
