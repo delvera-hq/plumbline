@@ -99,7 +99,25 @@ def touches(repo, pr, issue):
     return count
 
 
-def summarize(events, since, touch_fn=None, extra=""):
+def brief_of(repo, issue):
+    """The brief behind a task, if a person labeled it `brief`. Path 2's tasks have no touch of their own by design:
+    the Director's label on the brief started them. Returns the brief's number, or None."""
+    if not issue:
+        return None
+    out = subprocess.run(["gh", "api", f"repos/{repo}/issues/{issue}"], check=True, capture_output=True, text=True).stdout
+    task = json.loads(out)
+    if (task.get("user") or {}).get("login") != "github-actions[bot]":
+        return None
+    lines = (task.get("body") or "").replace("\r", "").split("\n")
+    brief = next((line[len("Brief: #"):] for line in lines if line.startswith("Brief: #") and line[len("Brief: #"):].isdigit()), None)
+    if not brief:
+        return None
+    labeled = any(e.get("event") == "labeled" and (e.get("label") or {}).get("name") == "brief"
+                  and human((e.get("actor") or {}).get("login")) for e in gh_json(f"repos/{repo}/issues/{brief}/events"))
+    return int(brief) if labeled else None
+
+
+def summarize(events, since, touch_fn=None, extra="", brief_fn=None):
     runs = [e for e in events if e["event"] == "agent.finished" and stamp(e["at"]) >= since]
     closed = {e.get("run_id"): e for e in events if e["event"] == "pr.closed" and e.get("run_id")}
     deploys = {e.get("sha"): e for e in events if e["event"] == "deploy.finished"}
@@ -116,6 +134,7 @@ def summarize(events, since, touch_fn=None, extra=""):
                 held_reasons[key] = held_reasons.get(key, 0) + 1
 
     results, cost, merged, live, hours, touch_total, touch_known, no_touch = {}, 0.0, 0, 0, [], 0, 0, []
+    from_brief = []
     for run in runs:
         results[run.get("result", "unknown")] = results.get(run.get("result", "unknown"), 0) + 1
         cost += float(run.get("cost_usd_est") or 0)
@@ -132,7 +151,10 @@ def summarize(events, since, touch_fn=None, extra=""):
             count = touch_fn(pr.get("pr"), run.get("issue")) + (1 if human(pr.get("merged_by")) else 0)
             touch_total += count
             touch_known += 1
-            if count == 0:
+            brief = brief_fn(run.get("issue")) if count == 0 and brief_fn else None
+            if count == 0 and brief:
+                from_brief.append((pr.get("pr"), brief))
+            elif count == 0:
                 no_touch.append(pr.get("pr"))
 
     lines = [
@@ -165,6 +187,8 @@ def summarize(events, since, touch_fn=None, extra=""):
     if held_reasons:
         top = sorted(held_reasons.items(), key=lambda kv: -kv[1])[:5]
         lines += ["", "**Why PRs were held:** " + "; ".join(f"{k} ({v})" for k, v in top) + "."]
+    if from_brief:
+        lines += ["", f"**Merged with no Director touch, from a Director's brief:** {', '.join(f'PR #{p} (brief #{b})' for p, b in from_brief)}. The Director's label on the brief started them, so this is path 2 and path 4 working."]
     if no_touch:
         lines += ["", f"**Merged with no recorded Director touch:** PRs {', '.join(f'#{n}' for n in no_touch)}. A Director's label should start every run, so check these: an App token may have started or merged them."]
     lines += ["", extra.strip() or "**Event check (event.v1):** didn't run."]
@@ -182,8 +206,9 @@ def main():
     args = parser.parse_args()
     since = datetime.now(timezone.utc) - timedelta(days=args.days)
     touch_fn = None if args.no_touches else (lambda pr, issue: touches(args.repo, pr, issue))
+    brief_fn = None if args.no_touches else (lambda issue: brief_of(args.repo, issue))
     extra = pathlib.Path(args.extra).read_text() if args.extra and pathlib.Path(args.extra).is_file() else ""
-    print(summarize(load(args.events), since, touch_fn, extra))
+    print(summarize(load(args.events), since, touch_fn, extra, brief_fn))
 
 
 if __name__ == "__main__":
