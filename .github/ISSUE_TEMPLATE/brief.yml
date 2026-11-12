@@ -1,0 +1,11 @@
+name: Brief for the planner
+description: Say what you want in a few lines. A planner turns it into small tasks, and the agent works through them in order.
+labels: [brief]
+body:
+  - type: textarea
+    id: brief
+    attributes:
+      label: Brief
+      description: What you want, and why. The planner holds anything unclear, too big, or that collects data, and says why.
+    validations:
+      required: true

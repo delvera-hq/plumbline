@@ -56,6 +56,8 @@ def summarize(events, since, touch_fn=None):
     deploys = {e.get("sha"): e for e in events if e["event"] == "deployed"}
     recent_deploys = [e for e in events if e["event"] == "deployed" and stamp(e["at"]) >= since]
     reviews = [e for e in events if e["event"] == "review" and stamp(e["at"]) >= since]
+    briefs = [e for e in events if e["event"] == "brief_planned" and stamp(e["at"]) >= since]
+    planner_cost = sum(float(e.get("planner_cost_usd_est") or 0) for e in briefs)
     critic_cost = sum(float(e.get("critic_cost_usd_est") or 0) for e in reviews)
     held_reasons = {}
     for e in reviews:
@@ -97,8 +99,9 @@ def summarize(events, since, touch_fn=None):
         f"| Rolled back by the probe | {sum(e.get('result') in ROLLED for e in recent_deploys)}, of which unconfirmed: {sum(e.get('result') in ('rollback_failed', 'rollback_unverified') for e in recent_deploys)} |",
         f"| Automatic revert PRs | {sum(bool(e.get('revert_pr')) and e.get('revert') in ('auto_merge', 'needs_merge') for e in recent_deploys)} |",
         f"| Auto-merged by path 4 | {sum(e.get('result') == 'auto_merged' for e in reviews)}, held for a Director: {sum(e.get('result') == 'held' for e in reviews)} |",
-        f"| LLM spend, client-side estimate | ${cost + critic_cost:.2f}, of which the Critic: ${critic_cost:.2f} |",
-        f"| Estimated cost per live change | {f'${(cost + critic_cost) / live:.2f}' if live else 'n/a'} |",
+        f"| Briefs planned by path 2 | {sum(e.get('result') == 'planned' for e in briefs)}, into {sum(len(e.get('tasks') or []) for e in briefs)} tasks. Not planned: {sum(e.get('result') != 'planned' for e in briefs)} |",
+        f"| LLM spend, client-side estimate | ${cost + critic_cost + planner_cost:.2f}, of which the Critic: ${critic_cost:.2f}, the planner: ${planner_cost:.2f} |",
+        f"| Estimated cost per live change | {f'${(cost + critic_cost + planner_cost) / live:.2f}' if live else 'n/a'} |",
         f"| Median hours from agent start to live | {f'{statistics.median(hours):.1f}' if hours else 'n/a'} |",
         f"| Director touches per merged PR | {f'{touch_total / touch_known:.1f}' if touch_known else 'n/a'} |",
     ]

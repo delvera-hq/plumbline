@@ -1,17 +1,23 @@
 # Path 1. Issue to PR with no broker. The agent gets a read-only checkout and an LLM key, and outputs a patch.
 # Separate jobs turn the patch into a PR and record the result. See bootstrap/path-1/README.md.
+# Path 2: brief.yml starts a task it wrote from a Director's brief through workflow_dispatch.
 name: agent
 on:
   issues:
     types: [labeled]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: Issue number of the task
+        required: true
 permissions: {}
 concurrency:
-  group: agent-${{ github.event.issue.number }}-${{ github.event.label.name }} # Any other label would replace a pending run.
+  group: agent-${{ github.event.issue.number || inputs.issue }}-${{ github.event.label.name || 'dispatch' }} # Any other label would replace a pending run.
   cancel-in-progress: false
 
 jobs:
   authorize:
-    if: github.event.label.name == 'agent:go'
+    if: github.event.label.name == 'agent:go' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     permissions:
@@ -27,17 +33,35 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          ISSUE: ${{ github.event.issue.number }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
           SENDER: ${{ github.event.sender.login }}
+          EVENT: ${{ github.event_name }}
           ALLOW: ${{ vars.AGENT_TRIGGER_ALLOWLIST }}
           RUN: ${{ github.run_id }}
           ATTEMPT: ${{ github.run_attempt }}
         run: |
           set -euo pipefail
-          jq -en --argjson allow "$ALLOW" --arg s "$SENDER" '$allow | index($s) != null' > /dev/null
+          [[ "$ISSUE" =~ ^[0-9]+$ ]] || { echo "::error::odd issue number"; exit 1; }
           gh api "repos/$REPO/issues/$ISSUE" > issue.json
+          jq -e '.pull_request == null' issue.json > /dev/null
           # By login, not author_association: private org members can show as CONTRIBUTOR or NONE.
-          jq -e --argjson allow "$ALLOW" '.user.login as $u | $allow | index($u) != null' issue.json > /dev/null
+          if jq -en --argjson allow "$ALLOW" --arg s "$SENDER" '$allow | index($s) != null' > /dev/null; then
+            # A Director asked. The task must be a Director's, or one written from a Director's brief.
+            if ! jq -e --argjson allow "$ALLOW" '.user.login as $u | $allow | index($u) != null' issue.json > /dev/null; then
+              FROM_BRIEF=true
+            fi
+          elif [ "$EVENT" = "workflow_dispatch" ] && [ "$SENDER" = "github-actions[bot]" ]; then
+            FROM_BRIEF=true # Path 2: only brief.yml on main can start a run this way.
+          else
+            echo "::error::$SENDER isn't allowed to start the agent"; exit 1
+          fi
+          if [ "${FROM_BRIEF:-false}" = "true" ]; then
+            jq -e '.user.login == "github-actions[bot]"' issue.json > /dev/null
+            BRIEF=$(jq -r '.body // ""' issue.json | sed -nE 's/^Brief: #([0-9]+)$/\1/p' | head -1)
+            [ -n "$BRIEF" ]
+            gh api "repos/$REPO/issues/$BRIEF" > brief.json
+            jq -e --argjson allow "$ALLOW" '(.user.login as $u | $allow | index($u) != null) and ([.labels[].name] | index("brief") != null)' brief.json > /dev/null
+          fi
           jq -r '.body // ""' issue.json | grep -qiE '^#+ *Acceptance criteria'
           mkdir -p spec
           jq -r '"# Issue title\n\(.title)\n\n# Issue body\n\(.body)"' issue.json > spec/spec.md
@@ -233,7 +257,7 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           PATCH: ${{ runner.temp }}/out/agent.patch
           TOOLS: ${{ runner.temp }}/tools
-          ISSUE: ${{ github.event.issue.number }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
           RUN_ID: ${{ needs.authorize.outputs.run_id }}
           PR_TITLE: ${{ needs.authorize.outputs.title }}
           AGENT_RESULT: ${{ needs.code.outputs.result }}
@@ -246,7 +270,7 @@ jobs:
 
   record: # Always runs. Tells the issue what happened and writes the run log. Runs nothing from the repo.
     needs: [authorize, code, export, publish]
-    if: always() && github.event.label.name == 'agent:go'
+    if: always() && (github.event.label.name == 'agent:go' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     permissions:
@@ -257,7 +281,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          ISSUE: ${{ github.event.issue.number }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           AUTH: ${{ needs.authorize.result }}
           CODE: ${{ needs.code.result }}
