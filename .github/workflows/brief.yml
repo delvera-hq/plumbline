@@ -2,14 +2,18 @@
 # 1. plan: a Director labels an issue `brief`. The planner (one Claude call, no tools) assesses it and lists up to
 #    5 small tasks. Plain code checks the list.
 # 2. create: the tasks become issues, the brief gets the plan as a comment, and the first task starts.
-# 3. next: when a task closes as completed, usually because its PR merged, the next task starts. A task closed as
-#    not planned stops the chain.
+# 3. next: when an agent PR merges, its issue closes and the next task starts. This keys on the merge, not on the
+#    issue closing, because GitHub doesn't close linked issues when the App merges. A task closed as not planned
+#    stops the chain.
 # Tasks start through agent.yml's workflow_dispatch, which accepts github-actions only for a task that links to a
 # Director's brief. Set the repo variable AUTO_START to false to stop it all.
 name: brief
 on:
   issues:
     types: [labeled, closed]
+  pull_request:
+    types: [closed]
+    branches: [main]
 permissions: {}
 concurrency:
   group: brief-chain # One at a time, so two closes can't start two tasks.
@@ -132,24 +136,30 @@ jobs:
 
   next:
     if: >-
-      github.event.action == 'closed' && vars.AUTO_START != 'false'
-      && github.event.issue.user.login == 'github-actions[bot]' && contains(github.event.issue.body, 'Brief: #')
+      github.event_name == 'pull_request' && github.event.pull_request.merged == true && vars.AUTO_START != 'false'
+      && startsWith(github.event.pull_request.head.ref, 'agent/issue-')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       issues: write
       actions: write
     steps:
-      - name: Start the next task, or stop the chain
+      - name: Close the task, then start the next one
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          ISSUE: ${{ github.event.issue.number }}
-          REASON: ${{ github.event.issue.state_reason }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR: ${{ github.event.pull_request.number }}
           ALLOW: ${{ vars.AGENT_TRIGGER_ALLOWLIST }}
         run: |
           set -euo pipefail
+          ISSUE=$(sed -nE 's#^agent/issue-([0-9]+)-.*#\1#p' <<<"$HEAD_REF")
+          [ -n "$ISSUE" ] || { echo "No issue in $HEAD_REF."; exit 0; }
           gh api "repos/$GH_REPO/issues/$ISSUE" > closed.json
+          if [ "$(jq -r .state closed.json)" = "open" ]; then
+            # GITHUB_TOKEN's close starts no workflow, so this can't also fire the stop job below.
+            gh issue close "$ISSUE" --reason completed --comment "Done in #$PR."
+          fi
           BRIEF=$(jq -r '.body // ""' closed.json | sed -nE 's/^Brief: #([0-9]+)$/\1/p' | head -1)
           STEP=$(jq -r '.body // ""' closed.json | sed -nE 's/^Step: ([0-9]+) of ([0-9]+)$/\1 \2/p' | head -1)
           [ -n "$BRIEF" ] && [ -n "$STEP" ] || { echo "Not a brief task."; exit 0; }
@@ -157,10 +167,6 @@ jobs:
           gh api "repos/$GH_REPO/issues/$BRIEF" > brief.json
           jq -e --argjson allow "$ALLOW" '(.user.login as $u | $allow | index($u) != null) and ([.labels[].name] | index("brief") != null)' brief.json > /dev/null \
             || { echo "::error::#$BRIEF isn't a Director's brief"; exit 1; }
-          if [ "$REASON" != "completed" ]; then
-            gh issue comment "$BRIEF" --body "Step $K of $M (#$ISSUE) closed as $REASON, so the chain stopped. Start a task by hand with the \`agent:go\` label, or re-run the brief."
-            exit 0
-          fi
           if [ "$K" -ge "$M" ]; then
             gh issue comment "$BRIEF" --body "All $M tasks are done. The last was #$ISSUE."
             gh issue close "$BRIEF" --reason completed
@@ -178,3 +184,26 @@ jobs:
           fi
           gh workflow run agent.yml -f issue="$NEXT"
           gh issue comment "$BRIEF" --body "Step $K of $M (#$ISSUE) is done. Started step $WANT, #$NEXT."
+
+  stopped:
+    # A person closed a task without merging it. The chain stops here.
+    if: >-
+      github.event_name == 'issues' && github.event.action == 'closed' && github.event.issue.state_reason != 'completed'
+      && github.event.issue.user.login == 'github-actions[bot]' && contains(github.event.issue.body, 'Brief: #')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      issues: write
+    steps:
+      - name: Say the chain stopped
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+          REASON: ${{ github.event.issue.state_reason }}
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          set -euo pipefail
+          BRIEF=$(sed -nE 's/^Brief: #([0-9]+)\r?$/\1/p' <<<"$BODY" | head -1)
+          [ -n "$BRIEF" ] || exit 0
+          gh issue comment "$BRIEF" --body "Task #$ISSUE closed as $REASON, so the chain stopped. Start a task by hand with the \`agent:go\` label, or write a new brief."
