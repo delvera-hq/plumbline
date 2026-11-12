@@ -27,6 +27,9 @@ def load(folder):
     return events
 
 
+ROLLED = ("rolled_back", "rollback_failed", "rollback_unverified")
+
+
 def human(login):
     return bool(login) and not login.endswith("[bot]")
 
@@ -83,11 +86,16 @@ def summarize(events, since, touch_fn=None):
         f"| PRs merged | {merged} |",
         f"| Changes live | {live} |",
         f"| Deploys, all causes | {len(recent_deploys)}, of which failed: {sum(e.get('result') != 'ok' for e in recent_deploys)} |",
+        f"| Rolled back by the probe | {sum(e.get('result') in ROLLED for e in recent_deploys)}, of which unconfirmed: {sum(e.get('result') in ('rollback_failed', 'rollback_unverified') for e in recent_deploys)} |",
+        f"| Automatic revert PRs | {sum(bool(e.get('revert_pr')) and e.get('revert') in ('auto_merge', 'needs_merge') for e in recent_deploys)} |",
         f"| LLM spend, client-side estimate | ${cost:.2f} |",
         f"| Estimated cost per live change | {f'${cost / live:.2f}' if live else 'n/a'} |",
         f"| Median hours from agent start to live | {f'{statistics.median(hours):.1f}' if hours else 'n/a'} |",
         f"| Director touches per merged PR | {f'{touch_total / touch_known:.1f}' if touch_known else 'n/a'} |",
     ]
+    bad = [e for e in recent_deploys if e.get("result") in ("rollback_failed", "rollback_unverified")]
+    if bad:
+        lines += ["", f"**Rollback not confirmed:** releases {', '.join(e.get('sha', '?')[:7] for e in bad)}. Check what's live."]
     if no_touch:
         lines += ["", f"**Merged with no recorded Director touch:** PRs {', '.join(f'#{n}' for n in no_touch)}. Merges come from a person on this path, so check these: an App token may have merged them."]
     lines += ["", "Cost is Claude Code's estimate. Compare it with Console spend now and then: a large gap can mean a stolen key.", "", "Optional: reply with your rough Director minutes this week. It's fine to skip."]

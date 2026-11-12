@@ -1,5 +1,8 @@
-# Path 1. A merge to main goes live. The build runs repo code and holds no secrets. The deploy job holds the token
-# and runs only a pinned wrangler on the build's output.
+# Paths 1 and 3. A merge to main goes live, then a probe checks it. If the probe fails, traffic goes back to the
+# version that was live before, and a revert PR opens and merges itself when its checks pass.
+# The build and the probes run repo code or none, and hold no secrets. The token jobs run only a pinned wrangler.
+# Set the repo variable AUTO_ROLLBACK to false to stop rollback and revert. PROBE_PATHS lists extra paths that must
+# return 200, such as "/ /docs/".
 name: deploy
 on:
   push:
@@ -10,6 +13,33 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  baseline:
+    # Probes what's live before this release. If the old release fails too, the probe can't judge this one, so
+    # nothing rolls back or reverts.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      ok: ${{ steps.probe.outputs.ok }}
+      sha: ${{ steps.probe.outputs.live_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/agent/
+      - id: probe
+        env:
+          URL: ${{ vars.PRODUCTION_URL }}
+          PROBE_PATHS: ${{ vars.PROBE_PATHS || '/' }}
+          PROBE_TRIES: "3"
+        run: |
+          set -o pipefail # Without it, tee's status hides the probe's.
+          if bash .github/agent/probe.sh "$URL" | tee probe.out; then echo ok=true >> "$GITHUB_OUTPUT"; else echo ok=false >> "$GITHUB_OUTPUT"; fi
+          sed -n '/^live_sha=/p' probe.out >> "$GITHUB_OUTPUT"
+
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -39,7 +69,7 @@ jobs:
           retention-days: 14
 
   deploy:
-    needs: build
+    needs: [baseline, build] # After the baseline, so it never probes this release by mistake.
     if: vars.DEPLOY_FREEZE != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -47,6 +77,8 @@ jobs:
     permissions: {}
     outputs:
       version_id: ${{ steps.upload.outputs.version_id }}
+      prev_version_id: ${{ steps.prev.outputs.version_id }}
+      attempted: ${{ steps.attempt.outputs.attempted }}
     steps:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
@@ -65,6 +97,18 @@ jobs:
           WORKER: ${{ vars.WORKER_NAME }}
         run: |
           jq -n --arg name "$WORKER" '{name:$name,compatibility_date:"2026-10-01",assets:{directory:"./dist",not_found_handling:"404-page"},preview_urls:true,workers_dev:true}' > wrangler.json
+      - id: prev
+        name: Note the version that's live now, so a failed probe can go back to it
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_DEPLOY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+        run: |
+          set -uo pipefail
+          STATUS=$("$RUNNER_TEMP/tool/node_modules/.bin/wrangler" deployments status --json --config wrangler.json) || STATUS=""
+          ID=$(jq -r '[.versions[]?] | max_by(.percentage) | .version_id // empty' <<<"$STATUS" 2>/dev/null) || ID=""
+          if [ -z "$ID" ]; then echo "::warning::No live version found, so this release can't roll back"; fi
+          echo "Live now: ${ID:-none}"
+          echo "version_id=$ID" >> "$GITHUB_OUTPUT"
       - id: upload
         name: Upload the version
         env:
@@ -77,28 +121,129 @@ jobs:
           ID=$(grep -oE 'Worker Version ID: [0-9a-f-]+' <<<"$OUT" | awk '{print $NF}') || ID=""
           if [ -z "$ID" ]; then echo "::error::No version ID in wrangler's output"; exit 1; fi
           echo "version_id=$ID" >> "$GITHUB_OUTPUT"
+      - id: attempt
+        run: echo attempted=true >> "$GITHUB_OUTPUT"
       - name: Send all traffic to it
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_DEPLOY_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
           VERSION_ID: ${{ steps.upload.outputs.version_id }}
         run: '"$RUNNER_TEMP/tool/node_modules/.bin/wrangler" versions deploy "$VERSION_ID@100%" --config wrangler.json --yes --message "$GITHUB_SHA"'
-      - name: Check that this commit is what's live
+
+  probe:
+    needs: deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/agent/
+      - name: Check that this commit is live and healthy
         env:
           URL: ${{ vars.PRODUCTION_URL }}
+          PROBE_PATHS: ${{ vars.PROBE_PATHS || '/' }}
+        run: bash .github/agent/probe.sh "$URL" "$GITHUB_SHA"
+
+  rollback:
+    needs: [baseline, deploy, probe]
+    if: >-
+      always() && vars.AUTO_ROLLBACK != 'false' && needs.baseline.outputs.ok == 'true'
+      && needs.deploy.outputs.attempted == 'true' && needs.deploy.outputs.prev_version_id != ''
+      && (needs.deploy.result == 'failure' || needs.probe.result == 'failure')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: production # Same rules as deploy: it checks out nothing, and installs wrangler before the token.
+    permissions: {}
+    steps:
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Install wrangler, with no token in reach of its install scripts
+        env:
+          WRANGLER: ${{ vars.WRANGLER_VERSION }}
+        run: npm install --no-audit --no-fund --prefix "$RUNNER_TEMP/tool" "wrangler@$WRANGLER"
+      - name: Write the config here
+        env:
+          WORKER: ${{ vars.WORKER_NAME }}
         run: |
-          set -euo pipefail
-          for attempt in 1 2 3 4 5 6; do
-            LIVE=$(curl -fsS --max-time 10 "$URL/__version.json" | jq -r .version) || LIVE=unreachable
-            if [ "$LIVE" = "$GITHUB_SHA" ]; then echo "Live: $LIVE"; exit 0; fi
-            echo "Attempt $attempt: live is $LIVE"
-            sleep 10
-          done
-          echo "::error::$GITHUB_SHA isn't live"
-          exit 1
+          jq -n --arg name "$WORKER" '{name:$name,compatibility_date:"2026-10-01",preview_urls:true,workers_dev:true}' > wrangler.json
+      - name: Send all traffic back to the version that was live before
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_DEPLOY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          PREV: ${{ needs.deploy.outputs.prev_version_id }}
+        run: '"$RUNNER_TEMP/tool/node_modules/.bin/wrangler" versions deploy "$PREV@100%" --config wrangler.json --yes --message "rollback from $GITHUB_SHA"'
+
+  recheck:
+    needs: [baseline, rollback]
+    if: always() && needs.rollback.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/agent/
+      - name: Check that the old release is live and healthy again
+        env:
+          URL: ${{ vars.PRODUCTION_URL }}
+          PROBE_PATHS: ${{ vars.PROBE_PATHS || '/' }}
+          EXPECT: ${{ needs.baseline.outputs.sha }}
+        run: bash .github/agent/probe.sh "$URL" "$EXPECT"
+
+  revert:
+    # Main still holds the bad commit, and the next deploy would ship it again. This opens a revert PR, which
+    # merges itself when its checks pass. It never reverts a revert, and opens one revert at a time.
+    needs: [baseline, deploy, probe, rollback, recheck]
+    if: >-
+      always() && vars.AUTO_ROLLBACK != 'false' && needs.baseline.outputs.ok == 'true'
+      && needs.deploy.outputs.attempted == 'true'
+      && (needs.deploy.result == 'failure' || needs.probe.result == 'failure')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: agent-publish # Holds only the App key.
+    permissions:
+      issues: write # For GITHUB_TOKEN, only to open an issue when a person must act.
+    outputs:
+      outcome: ${{ steps.revert.outputs.outcome }}
+      pr: ${{ steps.revert.outputs.pr }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          token: ${{ steps.app.outputs.token }}
+          ref: main
+          fetch-depth: 0
+      - id: revert
+        name: Open the revert PR, and let it merge itself
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          ISSUE_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BAD_SHA: ${{ github.sha }}
+          ROLLBACK: ${{ needs.rollback.result }}
+          RECHECK: ${{ needs.recheck.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash .github/agent/revert.sh
 
   record:
-    needs: [build, deploy]
+    needs: [baseline, build, deploy, probe, rollback, recheck, revert]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 3
@@ -111,18 +256,32 @@ jobs:
           GH_REPO: ${{ github.repository }}
           BUILD: ${{ needs.build.result }}
           DEPLOY: ${{ needs.deploy.result }}
+          PROBE: ${{ needs.probe.result }}
+          ROLLBACK: ${{ needs.rollback.result }}
+          RECHECK: ${{ needs.recheck.result }}
+          BASELINE_OK: ${{ needs.baseline.outputs.ok || 'false' }}
           VERSION_ID: ${{ needs.deploy.outputs.version_id }}
+          PREV_VERSION_ID: ${{ needs.deploy.outputs.prev_version_id }}
+          REVERT: ${{ needs.revert.outputs.outcome }}
+          REVERT_PR: ${{ needs.revert.outputs.pr }}
           TENANT: ${{ vars.TENANT || 'internal' }}
           PROJECT: ${{ vars.PROJECT || github.event.repository.name }}
         run: |
           set -uo pipefail
           RESULT=failed
-          if [ "$DEPLOY" = "success" ]; then RESULT=ok; fi
+          if [ "$DEPLOY" = "success" ] && [ "$PROBE" = "success" ]; then RESULT=ok; fi
           if [ "$BUILD" = "success" ] && [ "$DEPLOY" = "skipped" ]; then RESULT=skipped; fi
+          if [ "$ROLLBACK" = "success" ]; then RESULT=rolled_back; fi
+          if [ "$ROLLBACK" = "success" ] && [ "$RECHECK" != "success" ]; then RESULT=rollback_unverified; fi
+          if [ "$ROLLBACK" = "failure" ]; then RESULT=rollback_failed; fi
+          ROLLED_TO=""
+          if [ "$ROLLBACK" = "success" ]; then ROLLED_TO="$PREV_VERSION_ID"; fi
           NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           jq -n --arg e deployed --arg t "$TENANT" --arg p "$PROJECT" --arg sha "$GITHUB_SHA" --arg r "$RESULT" \
-            --arg v "$VERSION_ID" --arg at "$NOW" \
-            '{schema_version:1,event:$e,tenant:$t,project:$p,sha:$sha,result:$r,cf_version_id:$v,at:$at}' > event.json
+            --arg v "$VERSION_ID" --arg at "$NOW" --arg probe "$PROBE" --argjson base "$BASELINE_OK" \
+            --arg to "$ROLLED_TO" --arg rv "$REVERT" --arg rvpr "$REVERT_PR" \
+            '{schema_version:1,event:$e,tenant:$t,project:$p,sha:$sha,result:$r,cf_version_id:$v,probe:$probe,
+              baseline_ok:$base,rolled_back_to:$to,revert:$rv,revert_pr:$rvpr,at:$at}' > event.json
           gh api -X PUT "repos/$GH_REPO/contents/events/${NOW%%T*}/$GITHUB_SHA-$GITHUB_RUN_ATTEMPT-deployed.json" \
             -f branch=run-log -f message="log: $GITHUB_SHA deployed" -f content="$(base64 -w0 event.json)" > /dev/null \
             || echo "::warning::Couldn't write the run log"
