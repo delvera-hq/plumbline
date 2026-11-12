@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "event": "deployed",
+  "tenant": "internal",
+  "project": "plumbline",
+  "sha": "b154cf5b72bcde2fc2b72d548e3198687358edff",
+  "result": "ok",
+  "cf_version_id": "59500915-12e7-4d4c-b036-b4176c3850c8",
+  "probe": "success",
+  "baseline_ok": true,
+  "rolled_back_to": "",
+  "revert": "",
+  "revert_pr": "",
+  "at": "2026-11-12T11:27:54Z"
+}
