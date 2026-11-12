@@ -325,6 +325,16 @@ jobs:
             TEXT="The patch wasn't published. Reason: ${PUBLISH_REASON:-unknown} (agent result: ${AGENT:-unknown})."
           fi
           gh issue comment "$ISSUE" --body "$TEXT Estimated cost: \$${COST:-0}. Run: $RUN_URL" || echo "::warning::Couldn't comment on the issue"
+          # Path 2: a brief task with no PR can't move the chain by merging, so tell the brief what a Director can do.
+          if [ "$AUTH" = "success" ] && [ "$PUBLISHED" != "true" ]; then
+            TASK_BODY=$(gh api "repos/$GH_REPO/issues/$ISSUE" --jq '.body // ""' | tr -d '\r') || TASK_BODY=""
+            BRIEF=$(sed -nE 's/^Brief: #([0-9]+)$/\1/p' <<<"$TASK_BODY" | head -1)
+            STEP=$(sed -nE 's/^Step: ([0-9]+ of [0-9]+)$/\1/p' <<<"$TASK_BODY" | head -1)
+            if [ -n "$BRIEF" ] && [ -n "$STEP" ]; then
+              gh issue comment "$BRIEF" --body "Step $STEP (#$ISSUE) needs a Director. $TEXT If the work is already done, close #$ISSUE as completed and the chain moves on. To retry, remove and re-add the \`agent:go\` label. To stop, close #$ISSUE as not planned." \
+                || echo "::warning::Couldn't comment on the brief"
+            fi
+          fi
           NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           NAME="${RUN_ID:-run_${GITHUB_RUN_ID}}"
           jq -n --arg e agent_finished --arg run "$NAME" --arg t "$TENANT" --arg p "$PROJECT" --arg i "$ISSUE" \
