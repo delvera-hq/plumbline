@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "event": "pr_closed",
+  "run_id": "run_43209908245_1",
+  "tenant": "internal",
+  "project": "plumbline",
+  "pr": "40",
+  "merged": true,
+  "merged_by": "delvera-hq-agent[bot]",
+  "sha": "ae24adaa67feb04ec02d23276a103fd141fc774e",
+  "at": "2026-11-12T11:34:52Z"
+}
