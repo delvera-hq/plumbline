@@ -1,5 +1,23 @@
 <!doctype html>
 <html lang="en">
   <head><meta charset="utf-8"><title>Docs</title></head>
-  <body><h1>Docs</h1></body>
+  <body>
+    <h1>Docs</h1>
+    <section>
+      <h2>Drift rules</h2>
+      <p>Plumbline compares monday.com plan items with their linked Jira issues and reports each mismatch as a finding. The examples below use fictional plan items and issue keys.</p>
+
+      <h3>PLAN_DONE_WORK_OPEN</h3>
+      <p>Fires when a plan item is marked done but at least one of its linked Jira issues is still open. Severity is high.</p>
+      <p><strong>Example:</strong> Plan item PLAN-7 "Night-mode palette" is marked done, but linked issue DEMO-12 is still In Progress, so Plumbline reports PLAN-7 with DEMO-12 as evidence.</p>
+
+      <h3>WORK_DONE_PLAN_OPEN</h3>
+      <p>Fires when every linked Jira issue is done but the plan item is not marked done. An item with no linked issues does not fire this rule. Severity is medium.</p>
+      <p><strong>Example:</strong> Plan item PLAN-9 "Export to CSV" is still Working on it, but its only linked issue DEMO-31 is Done, so Plumbline reports the mismatch.</p>
+
+      <h3>DUE_SOON_NO_ACTIVITY</h3>
+      <p>Fires when a plan item that is not done is due within seven days, or is already overdue, and none of its open linked issues has changed in the last seven days. Items with no due date, or with no open linked issues, do not fire this rule. Severity is high.</p>
+      <p><strong>Example:</strong> Plan item PLAN-4 "Billing reminders" is due 2026-11-14. Its open issues DEMO-18 and DEMO-19 were last updated on 2026-10-30, so Plumbline reports that no work has moved ahead of the deadline.</p>
+    </section>
+  </body>
 </html>
