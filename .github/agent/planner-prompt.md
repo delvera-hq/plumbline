@@ -17,6 +17,7 @@ Each task must be:
 - **Checkable.** 2 to 5 acceptance criteria, each one a fact someone can check in the code or the page. Say which files change.
 - **Self-contained.** It mustn't need a person to act between tasks.
 - **Plain.** Write for a reader who hasn't seen the brief. No mentions of people.
+- **Tested in the same task.** The coding agent always adds or updates tests for its change. Never make tests a separate task, and never write a criterion that forbids changes to test files. If you limit which files change, say "no other source files change", and name the test files the task may touch.
 
 Set `risk` to `high` for anything that collects data, adds a dependency, or touches security. Use `low` for text, docs and pure functions with tests. Prefer a plan of low-risk tasks.
 
