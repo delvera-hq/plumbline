@@ -2,9 +2,10 @@
 # 1. plan: a Director labels an issue `brief`. The planner (one Claude call, no tools) assesses it and lists up to
 #    5 small tasks. Plain code checks the list.
 # 2. create: the tasks become issues, the brief gets the plan as a comment, and the first task starts.
-# 3. next: when an agent PR merges, its issue closes and the next task starts. This keys on the merge, not on the
-#    issue closing, because GitHub doesn't close linked issues when the App merges. A task closed as not planned
-#    stops the chain.
+# 3. next: when an agent PR merges, its issue closes and the next task starts. This keys on the merge, because GitHub
+#    doesn't close linked issues when the App merges. closed: a person closing a task as completed also moves it on,
+#    for a run that needed no change. brief_next.sh is idempotent, so both firing starts one task. A task closed as
+#    not planned stops the chain.
 # Tasks start through agent.yml's workflow_dispatch, which accepts github-actions only for a task that links to a
 # Director's brief. Set the repo variable AUTO_START to false to stop it all.
 name: brief
@@ -113,6 +114,7 @@ jobs:
             printf '\nPlanner cost about $%s. Run: %s\n' "$COST" "$RUN_URL" >> summary.md
             gh issue comment "$BRIEF" --body-file summary.md
             FIRST=$(awk '{print $1}' <<<"$NUMBERS")
+            gh issue comment "$FIRST" --body "Started by the brief chain. Step 1 of $TOTAL."
             gh workflow run agent.yml --ref main -f issue="$FIRST"
             RESULT=planned
           else
@@ -135,6 +137,7 @@ jobs:
             || echo "::warning::Couldn't write the run log"
 
   next:
+    # An agent PR merged. Close its task, as GitHub doesn't when the App merges, then move the chain on.
     if: >-
       github.event_name == 'pull_request' && github.event.pull_request.merged == true && vars.AUTO_START != 'false'
       && startsWith(github.event.pull_request.head.ref, 'agent/issue-')
@@ -145,6 +148,12 @@ jobs:
       issues: write
       actions: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/agent/
       - name: Close the task, then start the next one
         env:
           GH_TOKEN: ${{ github.token }}
@@ -156,35 +165,38 @@ jobs:
           set -euo pipefail
           ISSUE=$(sed -nE 's#^agent/issue-([0-9]+)-.*#\1#p' <<<"$HEAD_REF")
           [ -n "$ISSUE" ] || { echo "No issue in $HEAD_REF."; exit 0; }
-          gh api "repos/$GH_REPO/issues/$ISSUE" > closed.json
-          if [ "$(jq -r .state closed.json)" = "open" ]; then
-            # GITHUB_TOKEN's close starts no workflow, so this can't also fire the stop job below.
+          if [ "$(gh api "repos/$GH_REPO/issues/$ISSUE" --jq .state)" = "open" ]; then
+            # GITHUB_TOKEN's close starts no workflow, so this can't also fire the closed job below.
             gh issue close "$ISSUE" --reason completed --comment "Done in #$PR."
           fi
-          BRIEF=$(jq -r '.body // ""' closed.json | sed -nE 's/^Brief: #([0-9]+)$/\1/p' | head -1)
-          STEP=$(jq -r '.body // ""' closed.json | sed -nE 's/^Step: ([0-9]+) of ([0-9]+)$/\1 \2/p' | head -1)
-          [ -n "$BRIEF" ] && [ -n "$STEP" ] || { echo "Not a brief task."; exit 0; }
-          read -r K M <<<"$STEP"
-          gh api "repos/$GH_REPO/issues/$BRIEF" > brief.json
-          jq -e --argjson allow "$ALLOW" '(.user.login as $u | $allow | index($u) != null) and ([.labels[].name] | index("brief") != null)' brief.json > /dev/null \
-            || { echo "::error::#$BRIEF isn't a Director's brief"; exit 1; }
-          if [ "$K" -ge "$M" ]; then
-            gh issue comment "$BRIEF" --body "All $M tasks are done. The last was #$ISSUE."
-            gh issue close "$BRIEF" --reason completed
-            exit 0
-          fi
-          WANT=$((K + 1))
-          gh api --paginate --slurp "repos/$GH_REPO/issues?state=open&per_page=100" > open.json
-          # Whole lines only, so "Brief: #1" never matches "Brief: #12".
-          NEXT=$(jq -r --arg b "Brief: #$BRIEF" --arg s "Step: $WANT of $M" '
-            [.[][] | select(.pull_request == null and .user.login == "github-actions[bot]")
-              | select((.body // "") | split("\n") | (index($b) != null and index($s) != null)) | .number][0] // empty' open.json)
-          if [ -z "$NEXT" ]; then
-            gh issue comment "$BRIEF" --body "Step $K of $M (#$ISSUE) is done, but I can't find step $WANT open, so the chain stopped."
-            exit 0
-          fi
-          gh workflow run agent.yml --ref main -f issue="$NEXT"
-          gh issue comment "$BRIEF" --body "Step $K of $M (#$ISSUE) is done. Started step $WANT, #$NEXT."
+          ISSUE="$ISSUE" bash .github/agent/brief_next.sh
+
+  closed:
+    # A person closed a task as completed, for example after an agent run that needed no change.
+    if: >-
+      github.event_name == 'issues' && github.event.action == 'closed' && github.event.issue.state_reason == 'completed'
+      && github.event.sender.login != 'github-actions[bot]' && vars.AUTO_START != 'false'
+      && github.event.issue.user.login == 'github-actions[bot]' && contains(github.event.issue.body, 'Brief: #')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/agent/
+      - name: Start the next task, unless the merge already did
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+          ALLOW: ${{ vars.AGENT_TRIGGER_ALLOWLIST }}
+        run: bash .github/agent/brief_next.sh
 
   stopped:
     # A person closed a task without merging it. The chain stops here.
