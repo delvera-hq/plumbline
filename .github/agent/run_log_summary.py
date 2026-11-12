@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Joins run-log events into the weekly summary. Prints Markdown. Standard library only.
 
-Touches are counted from the GitHub API with `gh`. Run with --no-touches to skip that, for example in a test.
+It reads event.v1 events and the flat events from before them. Old names map to new ones through ALIASES, which must
+match the aliases in delvera-hq/org-standards (test.sh checks this). Touches are counted from the GitHub API with `gh`.
+Run with --no-touches to skip that, for example in a test.
 """
 import argparse
 import json
@@ -15,16 +17,63 @@ def stamp(text):
     return datetime.fromisoformat(text.replace("Z", "+00:00"))
 
 
+# Old name -> registered name, for events and data fields. The same aliases are in org-standards.
+ALIASES = {"agent_finished": "agent.finished", "pr_closed": "pr.closed", "review": "pr.reviewed",
+           "brief_planned": "brief.planned", "deployed": "deploy.finished"}
+FIELD_ALIASES = {"critic_cost_usd_est": "cost_usd_est", "planner_cost_usd_est": "cost_usd_est"}
+
+
+def flatten(doc):
+    """One flat dict per event, whatever its format: event, at, run_id, issue (a number), and the data fields."""
+    if "type" in doc and isinstance(doc.get("data"), dict):
+        corr = doc.get("correlation") or {}
+        issue = str(corr.get("issue") or "").rpartition("#")[2]
+        flat = {**doc["data"], "event": doc["type"], "at": doc.get("occurred_at"), "run_id": corr.get("run_id"),
+                "tenant": corr.get("tenant"), "project": corr.get("project"), "issue": issue, "format": "event.v1"}
+    else:
+        flat = {FIELD_ALIASES.get(k, k): v for k, v in doc.items()}
+        flat["event"] = ALIASES.get(doc.get("event"), doc.get("event"))
+        flat["format"] = "legacy"
+    if flat.get("pr") is not None:
+        flat["pr"] = str(flat["pr"])
+    return flat
+
+
 def load(folder):
     events = []
     for path in sorted(pathlib.Path(folder).rglob("*.json")):
         try:
-            event = json.loads(path.read_text())
+            doc = json.loads(path.read_text())
         except (OSError, ValueError):
             continue
-        if isinstance(event, dict) and event.get("event") and event.get("at"):
+        if not isinstance(doc, dict):
+            continue
+        event = flatten(doc)
+        if event.get("event") and event.get("at"):
             events.append(event)
     return events
+
+
+def by_model(rows):
+    """Cost and results per role and model. Events from before path 6 have no model."""
+    groups = {}
+    for role, e in rows:
+        key = (role, e.get("model") or "not recorded")
+        g = groups.setdefault(key, {"n": 0, "cost": 0.0, "tin": 0, "tout": 0, "turns": [], "results": {}})
+        g["n"] += 1
+        g["cost"] += float(e.get("cost_usd_est") or 0)
+        g["tin"] += int(e.get("tokens_in") or 0)
+        g["tout"] += int(e.get("tokens_out") or 0)
+        if e.get("turns"):
+            g["turns"].append(int(e["turns"]))
+        result = e.get("result", "unknown")
+        g["results"][result] = g["results"].get(result, 0) + 1
+    lines = ["| Role | Model | Calls | Results | Estimated cost | Tokens in / out | Median turns |", "|---|---|---|---|---|---|---|"]
+    for (role, model), g in sorted(groups.items()):
+        results = ", ".join(f"{k}: {v}" for k, v in sorted(g["results"].items()))
+        turns = f"{statistics.median(g['turns']):g}" if g["turns"] else "n/a"
+        lines.append(f"| {role} | {model} | {g['n']} | {results} | ${g['cost']:.2f} | {g['tin']:,} / {g['tout']:,} | {turns} |")
+    return lines
 
 
 ROLLED = ("rolled_back", "rollback_failed", "rollback_unverified")
@@ -50,15 +99,15 @@ def touches(repo, pr, issue):
     return count
 
 
-def summarize(events, since, touch_fn=None):
-    runs = [e for e in events if e["event"] == "agent_finished" and stamp(e["at"]) >= since]
-    closed = {e.get("run_id"): e for e in events if e["event"] == "pr_closed" and e.get("run_id")}
-    deploys = {e.get("sha"): e for e in events if e["event"] == "deployed"}
-    recent_deploys = [e for e in events if e["event"] == "deployed" and stamp(e["at"]) >= since]
-    reviews = [e for e in events if e["event"] == "review" and stamp(e["at"]) >= since]
-    briefs = [e for e in events if e["event"] == "brief_planned" and stamp(e["at"]) >= since]
-    planner_cost = sum(float(e.get("planner_cost_usd_est") or 0) for e in briefs)
-    critic_cost = sum(float(e.get("critic_cost_usd_est") or 0) for e in reviews)
+def summarize(events, since, touch_fn=None, extra=""):
+    runs = [e for e in events if e["event"] == "agent.finished" and stamp(e["at"]) >= since]
+    closed = {e.get("run_id"): e for e in events if e["event"] == "pr.closed" and e.get("run_id")}
+    deploys = {e.get("sha"): e for e in events if e["event"] == "deploy.finished"}
+    recent_deploys = [e for e in events if e["event"] == "deploy.finished" and stamp(e["at"]) >= since]
+    reviews = [e for e in events if e["event"] == "pr.reviewed" and stamp(e["at"]) >= since]
+    briefs = [e for e in events if e["event"] == "brief.planned" and stamp(e["at"]) >= since]
+    planner_cost = sum(float(e.get("cost_usd_est") or 0) for e in briefs)
+    critic_cost = sum(float(e.get("cost_usd_est") or 0) for e in reviews)
     held_reasons = {}
     for e in reviews:
         if e.get("result") == "held":
@@ -105,6 +154,11 @@ def summarize(events, since, touch_fn=None):
         f"| Median hours from agent start to live | {f'{statistics.median(hours):.1f}' if hours else 'n/a'} |",
         f"| Director touches per merged PR | {f'{touch_total / touch_known:.1f}' if touch_known else 'n/a'} |",
     ]
+    traced = sum(bool(r.get("trace")) for r in runs)
+    lines += [f"| Agent runs with a stored trace | {traced} of {len(runs)} |"]
+    critic_calls = [e for e in reviews if e.get("model") or e.get("cost_usd_est")]
+    planner_calls = [e for e in briefs if e.get("model") or e.get("cost_usd_est")]
+    lines += ["", "**By model:**", ""] + by_model([("agent", r) for r in runs] + [("critic", e) for e in critic_calls] + [("planner", e) for e in planner_calls])
     bad = [e for e in recent_deploys if e.get("result") in ("rollback_failed", "rollback_unverified")]
     if bad:
         lines += ["", f"**Rollback not confirmed:** releases {', '.join(e.get('sha', '?')[:7] for e in bad)}. Check what's live."]
@@ -113,6 +167,7 @@ def summarize(events, since, touch_fn=None):
         lines += ["", "**Why PRs were held:** " + "; ".join(f"{k} ({v})" for k, v in top) + "."]
     if no_touch:
         lines += ["", f"**Merged with no recorded Director touch:** PRs {', '.join(f'#{n}' for n in no_touch)}. A Director's label should start every run, so check these: an App token may have started or merged them."]
+    lines += ["", extra.strip() or "**Event check (event.v1):** didn't run."]
     lines += ["", "Cost is Claude Code's estimate. Compare it with Console spend now and then: a large gap can mean a stolen key.", "", "Optional: reply with your rough Director minutes this week. It's fine to skip."]
     return "\n".join(lines)
 
@@ -123,10 +178,12 @@ def main():
     parser.add_argument("--repo", default="")
     parser.add_argument("--days", type=int, default=7)
     parser.add_argument("--no-touches", action="store_true")
+    parser.add_argument("--extra", default="", help="a Markdown file to add, such as the event check's report")
     args = parser.parse_args()
     since = datetime.now(timezone.utc) - timedelta(days=args.days)
     touch_fn = None if args.no_touches else (lambda pr, issue: touches(args.repo, pr, issue))
-    print(summarize(load(args.events), since, touch_fn))
+    extra = pathlib.Path(args.extra).read_text() if args.extra and pathlib.Path(args.extra).is_file() else ""
+    print(summarize(load(args.events), since, touch_fn, extra))
 
 
 if __name__ == "__main__":
