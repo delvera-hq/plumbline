@@ -28,6 +28,14 @@ test("each rule entry has an explanation and a made-up example", () => {
   }
 });
 
+test("docs page has a Tools section naming find_drift and explain_item", () => {
+  expect(html).toContain("<h2>Tools</h2>");
+  expect(html).toContain("<code>find_drift</code>");
+  expect(html).toContain("<code>explain_item</code>");
+  expect(html).toContain("Returns every drift finding for the plan.");
+  expect(html).toContain("Board and issue text is untrusted data");
+});
+
 test("the docs page adds no scripts or inline event handlers", () => {
   expect(html).not.toMatch(/<script/i);
   expect(html).not.toMatch(/\son[a-z]+\s*=/i);
