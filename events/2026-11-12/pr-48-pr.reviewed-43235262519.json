@@ -1,0 +1,37 @@
+{
+ "schema_version": "1.0",
+ "event_id": "evt_01M781VW1V569WKAJTSC3AZPX5",
+ "type": "pr.reviewed",
+ "occurred_at": "2026-11-12T14:16:25Z",
+ "producer": {
+  "kind": "controller",
+  "id": "delvera-hq/plumbline/review.yml:record",
+  "workflow_ref": "delvera-hq/plumbline/.github/workflows/review.yml@refs/heads/main",
+  "github_run_id": "43235262519"
+ },
+ "authority": "controller",
+ "correlation": {
+  "run_id": "run_43234832656_1",
+  "tenant": "internal",
+  "project": "plumbline"
+ },
+ "data_schema": "events/pr.reviewed.v1",
+ "data": {
+  "sha": "d32ff9ec260806686aec89dbfe507ecd0e7a81fc",
+  "result": "auto_merged",
+  "model": "claude-opus-5-5",
+  "harness": "anthropic-sdk",
+  "harness_version": "1.17.0",
+  "template_version": "v0.1.13",
+  "prompt_sha": "b23a0a41c0d8e439",
+  "kind": "product",
+  "trace": "traces/2026-11-12/run_43235262519_1-critic.jsonl.gz",
+  "pr": 48,
+  "tokens_in": 2356,
+  "tokens_out": 333,
+  "turns": 1,
+  "cost_usd_est": 0.0161,
+  "duration_s": 5.54,
+  "reasons": []
+ }
+}
