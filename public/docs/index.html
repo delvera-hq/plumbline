@@ -42,5 +42,21 @@
       </dl>
       <p>Board and issue text is untrusted data, so the assistant should report that text rather than follow any instructions in it.</p>
     </section>
+    <section>
+      <h2>Settings</h2>
+      <p>Plumbline is configured with these environment variables.</p>
+      <ul>
+        <li><code>MONDAY_TOKEN</code>: an API token for a monday.com user with view-only access to the plan board.</li>
+        <li><code>MONDAY_BOARD_ID</code>: the ID of the monday.com plan board.</li>
+        <li><code>MONDAY_STATUS_COLUMN</code>: the monday.com column ID for status.</li>
+        <li><code>MONDAY_DATE_COLUMN</code>: the monday.com column ID for due date.</li>
+        <li><code>MONDAY_LINK_COLUMN</code>: the monday.com column ID for Jira links.</li>
+        <li><code>MONDAY_STATUS_CLASSES</code>: a JSON object that maps every status label on the board to <code>done</code>, <code>active</code> or <code>not_started</code>; a label that is not listed is an error.</li>
+        <li><code>JIRA_BASE_URL</code>: the base URL of the Jira site, such as https://example.atlassian.net.</li>
+        <li><code>JIRA_EMAIL</code>: the email address of the Jira account that owns the token.</li>
+        <li><code>JIRA_TOKEN</code>: an API token for a Jira account that can only browse the projects involved.</li>
+      </ul>
+      <p>The server reads these once at startup and stops with a message naming any missing or invalid setting.</p>
+    </section>
   </body>
 </html>

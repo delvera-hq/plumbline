@@ -36,6 +36,31 @@ test("docs page has a Tools section naming find_drift and explain_item", () => {
   expect(html).toContain("Board and issue text is untrusted data");
 });
 
+test("docs page has a Settings section naming each environment variable in a list", () => {
+  const settingNames = [
+    "MONDAY_TOKEN",
+    "MONDAY_BOARD_ID",
+    "MONDAY_STATUS_COLUMN",
+    "MONDAY_DATE_COLUMN",
+    "MONDAY_LINK_COLUMN",
+    "MONDAY_STATUS_CLASSES",
+    "JIRA_BASE_URL",
+    "JIRA_EMAIL",
+    "JIRA_TOKEN",
+  ];
+  expect(html).toContain("<h2>Settings</h2>");
+  const settingsSection = html.slice(html.indexOf("<h2>Settings</h2>"));
+  const items = [...settingsSection.matchAll(/<li><code>([A-Z_]+)<\/code>/g)].map((match) => match[1]);
+  expect(items).toEqual(settingNames);
+  for (const name of settingNames) {
+    expect(html).toContain(`<code>${name}</code>`);
+  }
+  expect(html).toContain(
+    "<code>done</code>, <code>active</code> or <code>not_started</code>; a label that is not listed is an error.",
+  );
+  expect(html).toContain("reads these once at startup and stops with a message naming any missing or invalid setting.");
+});
+
 test("the docs page adds no scripts or inline event handlers", () => {
   expect(html).not.toMatch(/<script/i);
   expect(html).not.toMatch(/\son[a-z]+\s*=/i);
