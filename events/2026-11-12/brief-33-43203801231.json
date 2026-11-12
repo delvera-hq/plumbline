@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "event": "brief_planned",
+  "tenant": "internal",
+  "project": "plumbline",
+  "issue": "33",
+  "result": "planned",
+  "tasks": [
+    "34",
+    "35",
+    "36"
+  ],
+  "planner_cost_usd_est": 0.0416,
+  "at": "2026-11-12T10:50:47Z"
+}
