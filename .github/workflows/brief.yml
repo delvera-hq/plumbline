@@ -32,6 +32,14 @@ jobs:
     outputs:
       ok: ${{ steps.plan.outputs.ok }}
       cost: ${{ steps.plan.outputs.cost_usd_est }}
+      model: ${{ steps.plan.outputs.model }}
+      harness: ${{ steps.plan.outputs.harness }}
+      harness_version: ${{ steps.plan.outputs.harness_version }}
+      prompt_sha: ${{ steps.plan.outputs.prompt_sha }}
+      tokens_in: ${{ steps.plan.outputs.tokens_in }}
+      tokens_out: ${{ steps.plan.outputs.tokens_out }}
+      turns: ${{ steps.plan.outputs.turns }}
+      duration_s: ${{ steps.plan.outputs.duration_s }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -61,13 +69,16 @@ jobs:
         run: |
           set -euo pipefail
           "$RUNNER_TEMP/venv/bin/python" -I .github/agent/planner.py plan --brief "$RUNNER_TEMP/brief.md" --repo-dir . \
-            --out "$RUNNER_TEMP/plan.json" | tee "$RUNNER_TEMP/plan.out"
+            --out "$RUNNER_TEMP/plan.json" --trace "$RUNNER_TEMP/trace.json.gz" | tee "$RUNNER_TEMP/plan.out"
           jq '{plan, problems}' "$RUNNER_TEMP/plan.json"
-          grep -E '^(ok|tasks|cost_usd_est)=' "$RUNNER_TEMP/plan.out" >> "$GITHUB_OUTPUT"
+          grep -E '^(ok|tasks|cost_usd_est|model|harness|harness_version|prompt_sha|tokens_in|tokens_out|turns|duration_s)=' "$RUNNER_TEMP/plan.out" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: plan
-          path: ${{ runner.temp }}/plan.json
+          path: |
+            ${{ runner.temp }}/plan.json
+            ${{ runner.temp }}/trace.json.gz
+          if-no-files-found: warn
           retention-days: 7
 
   create:
@@ -85,6 +96,7 @@ jobs:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             /.github/agent/
+            /.copier-answers.yml
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: plan
@@ -96,6 +108,15 @@ jobs:
           BRIEF: ${{ github.event.issue.number }}
           OK: ${{ needs.plan.outputs.ok }}
           COST: ${{ needs.plan.outputs.cost || '0' }}
+          MODEL: ${{ needs.plan.outputs.model }}
+          HARNESS: ${{ needs.plan.outputs.harness }}
+          HARNESS_VERSION: ${{ needs.plan.outputs.harness_version }}
+          PROMPT_SHA: ${{ needs.plan.outputs.prompt_sha }}
+          TOKENS_IN: ${{ needs.plan.outputs.tokens_in }}
+          TOKENS_OUT: ${{ needs.plan.outputs.tokens_out }}
+          TURNS: ${{ needs.plan.outputs.turns }}
+          DURATION_S: ${{ needs.plan.outputs.duration_s }}
+          KIND: ${{ vars.KIND || 'product' }}
           TENANT: ${{ vars.TENANT || 'internal' }}
           PROJECT: ${{ vars.PROJECT || github.event.repository.name }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -127,14 +148,16 @@ jobs:
             gh issue comment "$BRIEF" --body-file refusal.md
             RESULT=not_planned
           fi
-          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          jq -n --arg e brief_planned --arg t "$TENANT" --arg p "$PROJECT" --arg b "$BRIEF" --arg r "$RESULT" \
-            --arg tasks "$NUMBERS" --arg cost "$COST" --arg at "$NOW" \
-            '{schema_version:1,event:$e,tenant:$t,project:$p,issue:$b,result:$r,tasks:($tasks|split(" ")|map(select(.!=""))),
-              planner_cost_usd_est:($cost|tonumber? // 0),at:$at}' > event.json
-          gh api -X PUT "repos/$GH_REPO/contents/events/${NOW%%T*}/brief-$BRIEF-$GITHUB_RUN_ID.json" \
-            -f branch=run-log -f message="log: brief $BRIEF $RESULT" -f content="$(base64 -w0 event.json)" > /dev/null \
-            || echo "::warning::Couldn't write the run log"
+          RUN="run_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+          TEMPLATE_VERSION=$(sed -n 's/^_commit: //p' .copier-answers.yml | head -1)
+          TASKS=$(jq -cn --arg t "$NUMBERS" '$t | split(" ") | map(select(. != "") | tonumber)')
+          TRACE=$(python3 -I .github/agent/run_log.py put-trace --file "$RUNNER_TEMP/plan/trace.json.gz" --run-id "$RUN" --role planner)
+          python3 -I .github/agent/run_log.py emit --type brief.planned --name "brief-$BRIEF-brief.planned-$GITHUB_RUN_ID" --run-id "$RUN" --issue "$BRIEF" \
+            --set result="$RESULT" --json tasks="$TASKS" --num cost_usd_est="$COST" \
+            --set model="$MODEL" --set harness="$HARNESS" --set harness_version="$HARNESS_VERSION" \
+            --set template_version="$TEMPLATE_VERSION" --set prompt_sha="$PROMPT_SHA" --int tokens_in="$TOKENS_IN" \
+            --int tokens_out="$TOKENS_OUT" --int turns="$TURNS" --num duration_s="$DURATION_S" --set kind="$KIND" \
+            --set trace="$TRACE"
 
   next:
     # An agent PR merged. Close its task, as GitHub doesn't when the App merges, then move the chain on.

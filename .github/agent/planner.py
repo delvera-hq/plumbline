@@ -9,12 +9,15 @@ Usage:
   planner.py issues --plan plan.json --brief-number N --out-dir dir Writes one Markdown body per task, and a summary.
 """
 import argparse
+import gzip
+import hashlib
 import json
 import os
 import pathlib
 import re
 import subprocess
 import sys
+import time
 
 HERE = pathlib.Path(__file__).resolve().parent
 DEFAULT_MODEL = "claude-opus-5-5"
@@ -46,6 +49,39 @@ SCHEMA = {
     "required": ["fit", "assessment", "risks", "tasks"],
     "additionalProperties": False,
 }
+
+
+# Path 6: what ran, and the trace. One call's trace is its request and its response.
+LAST_CALL: dict = {}
+
+
+def record_call(request: dict, response, seconds: float, model: str) -> None:
+    usage = response.usage
+    LAST_CALL.clear()
+    LAST_CALL.update({
+        "model": getattr(response, "model", None) or model,
+        "tokens_in": usage.input_tokens + (getattr(usage, "cache_creation_input_tokens", 0) or 0) + (getattr(usage, "cache_read_input_tokens", 0) or 0),
+        "tokens_out": usage.output_tokens,
+        "duration_s": round(seconds, 2),
+        "trace": {"request": request, "response": response.model_dump(mode="json") if hasattr(response, "model_dump") else repr(response)},
+    })
+
+
+def print_run_fields(model: str, prompt_file: pathlib.Path, trace_path: str | None) -> None:
+    """Prints model=, harness=, harness_version=, prompt_sha=, tokens_in=, tokens_out=, turns=, duration_s= lines."""
+    import anthropic
+
+    if trace_path and LAST_CALL:
+        with gzip.open(trace_path, "wt") as f:
+            json.dump(LAST_CALL["trace"], f)
+    print(f"model={LAST_CALL.get('model', model)}")
+    print("harness=anthropic-sdk")
+    print(f"harness_version={anthropic.__version__}")
+    print(f"prompt_sha={hashlib.sha256(prompt_file.read_bytes()).hexdigest()[:16]}")
+    print(f"tokens_in={LAST_CALL.get('tokens_in', 0)}")
+    print(f"tokens_out={LAST_CALL.get('tokens_out', 0)}")
+    print(f"turns={1 if LAST_CALL else 0}")
+    print(f"duration_s={LAST_CALL.get('duration_s', 0)}")
 
 
 def fence(label: str, text: str) -> str:
@@ -132,6 +168,7 @@ def main() -> int:
     p.add_argument("--brief", required=True)
     p.add_argument("--repo-dir", required=True)
     p.add_argument("--out", required=True)
+    p.add_argument("--trace", help="write the call's request and response here, gzipped")
     i = sub.add_parser("issues")
     i.add_argument("--plan", required=True)
     i.add_argument("--brief-number", type=int, required=True)
@@ -169,7 +206,9 @@ def main() -> int:
     request = build_request(model, prompt, pathlib.Path(args.brief).read_text(errors="replace"), repo_context(pathlib.Path(args.repo_dir)))
     cost, raw, problems = 0.0, None, []
     try:
+        started = time.monotonic()
         response = anthropic.Anthropic(max_retries=3).messages.create(**request)
+        record_call(request, response, time.monotonic() - started, model)
         rate_in, rate_out = PRICES.get(model, (0.0, 0.0))
         cost = (response.usage.input_tokens * rate_in + response.usage.output_tokens * rate_out) / 1_000_000
         if response.stop_reason != "end_turn":
@@ -185,6 +224,7 @@ def main() -> int:
     print(f"ok={'true' if plan else 'false'}")
     print(f"tasks={len(plan['tasks']) if plan else 0}")
     print(f"cost_usd_est={cost:.4f}")
+    print_run_fields(model, HERE / "planner-prompt.md", args.trace)
     return 0
 
 

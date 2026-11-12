@@ -28,3 +28,17 @@ jobs:
       - run: pnpm exec biome check .
       - run: pnpm exec tsc --noEmit
       - run: pnpm exec vitest run
+
+  # Path 11. Every event name and field, label, topic and project value must be in delvera-hq/org-standards.
+  # It reads files as data and runs nothing from the PR. A failure prints the exact entry to add there.
+  names:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read # To list the repo's live labels.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: delvera-hq/org-standards@v1

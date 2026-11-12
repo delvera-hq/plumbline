@@ -250,6 +250,12 @@ jobs:
     permissions:
       contents: write # Only for the run-log branch. Its pushes trigger no workflow, as they use GITHUB_TOKEN.
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/agent/run_log.py
       - name: Write the deploy event
         env:
           GH_TOKEN: ${{ github.token }}
@@ -276,12 +282,6 @@ jobs:
           if [ "$ROLLBACK" = "failure" ]; then RESULT=rollback_failed; fi
           ROLLED_TO=""
           if [ "$ROLLBACK" = "success" ]; then ROLLED_TO="$PREV_VERSION_ID"; fi
-          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          jq -n --arg e deployed --arg t "$TENANT" --arg p "$PROJECT" --arg sha "$GITHUB_SHA" --arg r "$RESULT" \
-            --arg v "$VERSION_ID" --arg at "$NOW" --arg probe "$PROBE" --argjson base "$BASELINE_OK" \
-            --arg to "$ROLLED_TO" --arg rv "$REVERT" --arg rvpr "$REVERT_PR" \
-            '{schema_version:1,event:$e,tenant:$t,project:$p,sha:$sha,result:$r,cf_version_id:$v,probe:$probe,
-              baseline_ok:$base,rolled_back_to:$to,revert:$rv,revert_pr:$rvpr,at:$at}' > event.json
-          gh api -X PUT "repos/$GH_REPO/contents/events/${NOW%%T*}/$GITHUB_SHA-$GITHUB_RUN_ATTEMPT-deployed.json" \
-            -f branch=run-log -f message="log: $GITHUB_SHA deployed" -f content="$(base64 -w0 event.json)" > /dev/null \
-            || echo "::warning::Couldn't write the run log"
+          python3 -I .github/agent/run_log.py emit --type deploy.finished --name "$GITHUB_SHA-$GITHUB_RUN_ATTEMPT-deploy.finished" \
+            --set sha="$GITHUB_SHA" --set result="$RESULT" --set cf_version_id="$VERSION_ID" --set probe="$PROBE" \
+            --bool baseline_ok="$BASELINE_OK" --set rolled_back_to="$ROLLED_TO" --set revert="$REVERT" --set revert_pr="$REVERT_PR"
