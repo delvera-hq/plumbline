@@ -79,17 +79,32 @@ function rateLimitMessage(service: string, retryAfter: string | null | undefined
 }
 
 /**
- * Refuses any monday.com document that is not a read. Strings and comments are ignored first,
- * so a word inside a string literal is allowed but a mutation or subscription keyword is not.
+ * Refuses any monday.com document that is not a single read. The rules are kept strict on purpose:
+ * no comments or string literals (the client sends every value as a variable), no mutation or
+ * subscription keyword, and exactly one `query` or `{ ... }` operation whose braces close at the end.
  */
 export function assertMondayQuery(document: string): void {
-  const code = document.replace(/"""[\s\S]*?"""|"(?:[^"\\]|\\.)*"/g, '""').replace(/#[^\n]*/g, "");
-  if (/\b(mutation|subscription)\b/i.test(code)) {
-    throw new Error("monday.com request refused: only GraphQL queries are allowed");
+  const refuse = (reason: string) => new Error(`monday.com request refused: ${reason}`);
+  if (/[#"]/.test(document)) throw refuse("comments and string literals are not allowed");
+  if (/\b(mutation|subscription)\b/i.test(document)) throw refuse("only GraphQL queries are allowed");
+
+  const text = document.trimEnd();
+  const open = text.indexOf("{");
+  if (open === -1) throw refuse("the document must be a query");
+  // Before the body only `query`, an optional name and optional variables may appear.
+  if (!/^\s*(query(\s+[A-Za-z_]\w*)?\s*(\([^(){}]*\))?\s*)?$/.test(text.slice(0, open))) {
+    throw refuse("the document must be a single query");
   }
-  if (!/^\s*(query\b|\{)/.test(code)) {
-    throw new Error("monday.com request refused: the document must be a query");
+  // The body must close exactly at the end, so a second operation cannot follow it.
+  let depth = 0;
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === "{") depth++;
+    if (text[i] === "}") {
+      depth--;
+      if (depth === 0 && i !== text.length - 1) throw refuse("the document must be a single query");
+    }
   }
+  if (depth !== 0) throw refuse("the braces do not close");
 }
 
 /** Sends one GraphQL query to monday.com. Refuses anything that is not a query before fetch is called. */
