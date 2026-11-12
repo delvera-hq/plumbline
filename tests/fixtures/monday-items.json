@@ -1,0 +1,35 @@
+{
+  "data": {
+    "boards": [
+      {
+        "items_page": {
+          "cursor": "example-cursor-2",
+          "items": [
+            {
+              "id": "9001",
+              "name": "Example plan item one",
+              "updated_at": "2026-11-10T09:00:00Z",
+              "url": "https://plan.example/items/9001",
+              "column_values": [
+                { "id": "status", "text": "Working on it" },
+                { "id": "date4", "text": "2026-12-01" },
+                { "id": "link", "text": "ENG-1, ENG-2 (see notes)" }
+              ]
+            },
+            {
+              "id": "9002",
+              "name": "Example plan item two",
+              "updated_at": null,
+              "url": "https://plan.example/items/9002",
+              "column_values": [
+                { "id": "status", "text": "Done" },
+                { "id": "date4", "text": "" },
+                { "id": "link", "text": null }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
