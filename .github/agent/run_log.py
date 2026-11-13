@@ -8,6 +8,7 @@ Empty values are left out, so an optional field that has no value is simply abse
   run_log.py emit --type agent.finished --name STEM [--run-id R] [--issue N] [--attempt N] [--dry-run]
                   [--set k=v] [--int k=v] [--num k=v] [--bool k=v] [--json k=v] ...
   run_log.py put-trace --file trace.jsonl.gz --run-id R --role agent      Prints the trace's path, or nothing.
+  run_log.py put-data --file f.json --path portfolio/predictions/idea-7/R.json   Path 12's data. Prints the path.
 
 Needs GH_REPO, GH_TOKEN, TENANT and PROJECT, and the GITHUB_* variables Actions sets. A failed write is a warning,
 never a failure: a missing record must not fail the job that did the work.
@@ -122,8 +123,21 @@ def main() -> int:
     t = sub.add_parser("put-trace")
     t.add_argument("--file", required=True)
     t.add_argument("--run-id", required=True)
-    t.add_argument("--role", required=True, choices=["agent", "critic", "planner"])
+    t.add_argument("--role", required=True, choices=["agent", "critic", "planner", "researcher-a", "researcher-b", "red-team", "judge-1", "judge-2", "judge-3"])
+    d = sub.add_parser("put-data")
+    d.add_argument("--file", required=True)
+    d.add_argument("--path", required=True, help="under portfolio/ on the run-log branch")
     args = parser.parse_args()
+
+    if args.cmd == "put-data":
+        path = pathlib.Path(args.file)
+        remote = args.path.strip("/")
+        if not remote.startswith("portfolio/") or ".." in remote.split("/") or not path.is_file():
+            print("::warning::put-data writes only an existing file under portfolio/.", file=sys.stderr)
+            return 0
+        if put(remote, path.read_bytes(), f"data: {remote}"):
+            print(remote)
+        return 0
 
     if args.cmd == "put-trace":
         path = pathlib.Path(args.file)
