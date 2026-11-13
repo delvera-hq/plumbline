@@ -1,0 +1,37 @@
+{
+ "schema_version": "1.0",
+ "event_id": "evt_01M7ATED1YP229RAD5CND2XYBA",
+ "type": "pr.reviewed",
+ "occurred_at": "2026-11-13T16:04:27Z",
+ "producer": {
+  "kind": "controller",
+  "id": "delvera-hq/plumbline/review.yml:record",
+  "workflow_ref": "delvera-hq/plumbline/.github/workflows/review.yml@refs/heads/main",
+  "github_run_id": "43458781557"
+ },
+ "authority": "controller",
+ "correlation": {
+  "run_id": "run_43458285210_1",
+  "tenant": "internal",
+  "project": "plumbline"
+ },
+ "data_schema": "events/pr.reviewed.v1",
+ "data": {
+  "sha": "05ecb657cf2bead72adbd7522a99c07b1b6f7af7",
+  "result": "auto_merged",
+  "model": "claude-opus-5-5",
+  "harness": "anthropic-sdk",
+  "harness_version": "1.17.0",
+  "template_version": "v0.1.16",
+  "prompt_sha": "b23a0a41c0d8e439",
+  "kind": "product",
+  "trace": "::warning::Couldn't write traces/2026-11-13/run_43458781557_1-critic.jsonl.gz to the run log: gh: is at c505313b4bc9be1dd7712673e1e584cff59825b0 but expected 34190ac5da763cf47017794994f107bc41f9835b (HTTP 409)",
+  "pr": 72,
+  "tokens_in": 5367,
+  "tokens_out": 2186,
+  "turns": 1,
+  "cost_usd_est": 0.0652,
+  "duration_s": 21.83,
+  "reasons": []
+ }
+}
