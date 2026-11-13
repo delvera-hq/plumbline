@@ -1,6 +1,6 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { loadPlan, readConfig } from "./plan";
-import { createServer } from "./server";
+import { loadPlan, readConfig } from "./plan.js";
+import { createServer } from "./server.js";
 
 // The project has no Node type definitions, so declare the parts of process this file reads.
 declare const process: { argv: string[]; env: Record<string, string | undefined> };

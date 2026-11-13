@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { readFile, writeFile } from "node:fs/promises";
-import { runAudit } from "./audit";
-import { parseConfigFile } from "./config-file";
-import { startStdioServer } from "./stdio";
+import { runAudit } from "./audit.js";
+import { parseConfigFile } from "./config-file.js";
+import { startStdioServer } from "./stdio.js";
 
 // The project has no Node type definitions, so declare the parts of process this file reads.
 declare const process: {
