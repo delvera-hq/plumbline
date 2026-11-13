@@ -59,7 +59,8 @@ jobs:
       - run: pnpm exec tsc --noEmit
       - run: pnpm exec vitest run
       - name: Build the site from public only, so compiled source in this private repo doesn't go public
-        run: mkdir dist && cp -r public/. dist/
+        # The tests may have built the package into dist, so empty it first: only public goes to the site.
+        run: rm -rf dist && mkdir dist && cp -r public/. dist/
       - name: Stamp the build, so the deploy can prove which version is live
         run: jq -n --arg version "$GITHUB_SHA" '{version:$version}' > dist/__version.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

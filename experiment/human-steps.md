@@ -14,8 +14,12 @@ This list is the result of the experiment. Remove a line when a path automates i
 | Add or rename a name: an event field, label, topic or project value | The names check fails until the entry is in `delvera-hq/org-standards`, and only a Director can publish it. That's on purpose: a name is a decision. Run `bootstrap/path-11/setup.sh` with a new `STANDARDS_TAG` | Path 11 | |
 | Set up a new shared repo, its access and its rulesets | Needs an org admin. `bootstrap/path-11/setup.sh` did it for `org-standards` in one run | Path 11 | |
 | Write an idea, and label it `idea` | Only a Director's idea starts research. Later, path 10 takes ideas from other sources | Path 12 | |
-| Grade each idea report, then a sample after the first 10 | The grades are the human labels that the checks and scores are calibrated against | Path 12 | |
+| Start research on an idea from your own Claude Code session | Research runs on the Directors' subscriptions to keep API spend low (path 16). One command: `/delvera:research-idea <number>`. CI checks and scores it with no other step | Path 16 | |
+| Set each repo's spend limit in the Anthropic Console | The provider's own limit is the one a bug can't get past. The Admin API can't set it yet | Path 16 | |
+| Grade each idea report, then a sample after the first 10 | The grades are the human labels that the checks and scores are calibrated against. A Director without the domain knowledge can pass on a reviewing agent's grade with `by=agent`, which is kept apart | Path 12 | |
 | Approve, park or stop an idea | Agents propose, plain code checks, and the Directors decide | Path 12 | |
-| Add a second model provider's key | Both researchers are Claude until then, and one family's models share mistakes. Creating the account needs a person | Path 12 | |
+| Set the pass mark and stop date for a test release | `/delvera:release-check` gathers what's left and proposes them. A pass mark set before launch is what stops cold feet and sunk cost alike | Path 12 | |
+| Ask for a pivot review of a weak idea, and stop a line that doesn't clear the bar | The weekly report lists candidates, and `idea:pivot` files up to three variants. Stopping is a Director's call, so sunk cost can't keep a line alive | Path 12 | |
+| Add a second model family | Both researchers are Claude until then, and one family's models share mistakes. A second provider's assistant on its own subscription can write the same `research.v1` report. Creating the account needs a person | Path 12 | |
 | Keep the never-list and North Star summary in `portfolio/limits.yaml` the same as `NORTHSTAR.md` | It's a copy. A later path can read the North Star directly | Path 12 | |
 | Read a trace to find why a run failed | Traces are kept from path 6. Nothing reads them yet. Path 9 will | Path 6 | |

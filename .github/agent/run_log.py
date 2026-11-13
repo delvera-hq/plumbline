@@ -123,7 +123,7 @@ def main() -> int:
     t = sub.add_parser("put-trace")
     t.add_argument("--file", required=True)
     t.add_argument("--run-id", required=True)
-    t.add_argument("--role", required=True, choices=["agent", "critic", "planner", "researcher-a", "researcher-b", "red-team", "judge-1", "judge-2", "judge-3"])
+    t.add_argument("--role", required=True, choices=["agent", "critic", "planner", "researcher-a", "researcher-b", "red-team", "judge-1", "judge-2", "judge-3", "pivot"])
     d = sub.add_parser("put-data")
     d.add_argument("--file", required=True)
     d.add_argument("--path", required=True, help="under portfolio/ on the run-log branch")
