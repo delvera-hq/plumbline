@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "plumbline": "./dist/cli.js"
+  },
   "packageManager": "pnpm@11.28.8",
   "scripts": {
     "lint": "biome check .",
