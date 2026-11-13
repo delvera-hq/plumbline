@@ -4,6 +4,51 @@
   <body>
     <h1>Docs</h1>
     <section>
+      <h2>Quick start</h2>
+      <p>You need Node.js 22 or later and a monday.com board with a Jira link column. The <a href="https://github.com/delvera-hq/plumbline/blob/main/README.md">README</a> has full detail on each setting.</p>
+      <ol>
+        <li>
+          <p>Install the package in your project:</p>
+          <pre><code>npm install @delvera-ai/plumbline</code></pre>
+        </li>
+        <li>
+          <p>Create a config file named <code>plumbline.env</code> with your own values. Each line is <code>KEY=value</code>, and lines starting with <code>#</code> are comments.</p>
+          <pre><code># plumbline.env: placeholder values only
+MONDAY_TOKEN=...
+MONDAY_BOARD_ID=...
+MONDAY_STATUS_COLUMN=status
+MONDAY_DATE_COLUMN=date4
+MONDAY_LINK_COLUMN=link
+MONDAY_STATUS_CLASSES={"Done":"done","Working on it":"active","Not started":"not_started"}
+JIRA_BASE_URL=https://example.atlassian.net
+JIRA_EMAIL=you@example.com
+JIRA_TOKEN=...</code></pre>
+          <p>The file holds tokens, so keep it out of version control and make it readable only by you.</p>
+        </li>
+        <li>
+          <p>Print a drift report with <code>plumbline audit --config FILE</code>, where <code>FILE</code> is your config file:</p>
+          <pre><code>npx plumbline audit --config plumbline.env</code></pre>
+        </li>
+        <li>
+          <p>Add the MCP server to your assistant with <code>plumbline mcp</code>. This example registers it with Claude Code. Replace each placeholder with your own values:</p>
+          <pre><code>claude mcp add --transport stdio \
+  --env MONDAY_TOKEN=... \
+  --env MONDAY_BOARD_ID=... \
+  --env MONDAY_STATUS_COLUMN=status \
+  --env MONDAY_DATE_COLUMN=date4 \
+  --env MONDAY_LINK_COLUMN=link \
+  --env 'MONDAY_STATUS_CLASSES={"Done":"done","Working on it":"active","Not started":"not_started"}' \
+  --env JIRA_BASE_URL=https://example.atlassian.net \
+  --env JIRA_EMAIL=you@example.com \
+  --env JIRA_TOKEN=... \
+  plumbline -- npx plumbline mcp</code></pre>
+        </li>
+        <li>
+          <p>Start your assistant and ask it to run <code>find_drift</code>.</p>
+        </li>
+      </ol>
+    </section>
+    <section>
       <h2>Drift rules</h2>
       <p>Plumbline compares monday.com plan items with their linked Jira issues and reports each mismatch as a finding. The examples below use fictional plan items and issue keys.</p>
 
@@ -66,6 +111,17 @@
         <li><strong>Jira:</strong> use an API token for an account that can only browse the projects involved. Plumbline only sends GET requests and the JQL search.</li>
       </ul>
       <p>Plumbline enforces read-only requests in code. A token that cannot write is a second line of defence if that check is ever bypassed.</p>
+    </section>
+    <section>
+      <h2>Trust notes</h2>
+      <ul>
+        <li><strong>What is read:</strong> from your monday.com plan board, each item's name, status, due date and link column. From your Jira site, the linked issues' status, due date and last update time.</li>
+        <li><strong>What leaves the machine:</strong> Plumbline sends nothing anywhere except the monday.com API and the Jira site named in <code>JIRA_BASE_URL</code>. It sends no telemetry or analytics. The only file it writes is the report, and only when you pass <code>--out</code>.</li>
+        <li><strong>Tokens:</strong> use read-only tokens, as described in the Read-only tokens section above.</li>
+        <li><strong>No warranty:</strong> Plumbline is provided as is, with no warranty of any kind.</li>
+        <li><strong>Support:</strong> support is best effort. Report problems through <a href="https://github.com/delvera-hq/plumbline/issues">GitHub issues</a>, and do not paste tokens or real board contents into an issue.</li>
+      </ul>
+      <p>For full detail on each setting, see the <a href="https://github.com/delvera-hq/plumbline/blob/main/README.md">README</a>.</p>
     </section>
   </body>
 </html>

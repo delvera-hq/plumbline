@@ -74,6 +74,49 @@ test("docs page has a Read-only tokens section for monday.com and Jira", () => {
   );
 });
 
+test("docs page has a Quick start with the install, audit and mcp commands", () => {
+  expect(html).toContain("<h2>Quick start</h2>");
+  expect(html).toContain("npm install @delvera-ai/plumbline");
+  expect(html).toContain("plumbline audit --config FILE");
+  expect(html).toContain("plumbline mcp");
+  expect(html).toContain("Start your assistant and ask it to run");
+});
+
+test("the Quick start config example uses placeholder values only", () => {
+  const quickStart = html.slice(html.indexOf("<h2>Quick start</h2>"), html.indexOf("<h2>Drift rules</h2>"));
+  const configLines = [...quickStart.matchAll(/^([A-Z_]+)=([^<\n]*)/gm)];
+  expect(Object.fromEntries(configLines.map((match) => [match[1], match[2]]))).toEqual({
+    MONDAY_TOKEN: "...",
+    MONDAY_BOARD_ID: "...",
+    MONDAY_STATUS_COLUMN: "status",
+    MONDAY_DATE_COLUMN: "date4",
+    MONDAY_LINK_COLUMN: "link",
+    MONDAY_STATUS_CLASSES: '{"Done":"done","Working on it":"active","Not started":"not_started"}',
+    JIRA_BASE_URL: "https://example.atlassian.net",
+    JIRA_EMAIL: "you@example.com",
+    JIRA_TOKEN: "...",
+  });
+});
+
+test("docs page examples contain no real email address or Atlassian site", () => {
+  const emails = html.match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g) ?? [];
+  expect([...new Set(emails)]).toEqual(["you@example.com"]);
+  const atlassianSites = html.match(/[\w-]+\.atlassian\.net/g) ?? [];
+  expect(atlassianSites.length).toBeGreaterThan(0);
+  for (const site of atlassianSites) {
+    expect(site).toBe("example.atlassian.net");
+  }
+});
+
+test("docs page has Trust notes and links to the README for setting details", () => {
+  expect(html).toContain("<h2>Trust notes</h2>");
+  expect(html).toContain("each item's name, status, due date and link column");
+  expect(html).toContain("Plumbline sends nothing anywhere except the monday.com API and the Jira site named in");
+  expect(html).toContain("Plumbline is provided as is, with no warranty of any kind.");
+  expect(html).toContain("support is best effort");
+  expect(html).toContain('href="https://github.com/delvera-hq/plumbline/blob/main/README.md"');
+});
+
 test("the docs page adds no scripts or inline event handlers", () => {
   expect(html).not.toMatch(/<script/i);
   expect(html).not.toMatch(/\son[a-z]+\s*=/i);
