@@ -410,3 +410,99 @@ describe("plumbline audit --config FILE", () => {
     expect(readFile).not.toHaveBeenCalled();
   });
 });
+
+/** The outputs for the CLI with a fake MCP server. `serveMcp` records each start, and can be made to fail. */
+function mcpOutputs(
+  fetch: FetchLike,
+  serveMcp = vi.fn(async () => {}),
+  overrides: { env?: Record<string, string | undefined> } = {},
+) {
+  const { deps, stdout, stderr } = outputs(fetch, overrides);
+  return { deps: { ...deps, readFile: vi.fn(async () => ""), serveMcp }, stdout, stderr, serveMcp };
+}
+
+describe("plumbline mcp", () => {
+  test("prints usage and exits 0 without starting the server or reading settings", async () => {
+    for (const argv of [
+      ["mcp", "--help"],
+      ["mcp", "-h"],
+    ]) {
+      const fetch = fakePlan(driftItems, driftIssues);
+      const { deps, stdout, stderr, serveMcp } = mcpOutputs(fetch, undefined, { env: {} });
+
+      const code = await runCli(argv, deps);
+
+      expect(code, JSON.stringify(argv)).toBe(0);
+      expect(stdout[0], JSON.stringify(argv)).toContain("Usage: plumbline mcp");
+      expect(stdout[0], JSON.stringify(argv)).toContain("Starts the Plumbline MCP server over stdio");
+      expect(stderr).toEqual([]);
+      expect(serveMcp).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    }
+  });
+
+  test("starts the stdio server once and writes nothing to stdout", async () => {
+    const fetch = fakePlan(driftItems, driftIssues);
+    const { deps, stdout, stderr, serveMcp } = mcpOutputs(fetch);
+
+    const code = await runCli(["mcp"], deps);
+
+    expect(code).toBe(0);
+    expect(serveMcp).toHaveBeenCalledTimes(1);
+    expect(stdout).toEqual([]);
+    expect(stderr).toEqual([]);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test("exits non-zero and reports the error when the server cannot start", async () => {
+    const serveMcp = vi.fn(async () => {
+      throw new Error("Plumbline is not configured: MONDAY_BOARD_ID: Required");
+    });
+    const { deps, stdout, stderr } = mcpOutputs(fakePlan([], []), serveMcp, { env: {} });
+
+    const code = await runCli(["mcp"], deps);
+
+    expect(code).toBe(1);
+    expect(stderr[0]).toContain("Could not start the MCP server");
+    expect(stderr[0]).toContain("MONDAY_BOARD_ID");
+    expect(stdout).toEqual([]);
+  });
+
+  test("exits non-zero with usage for an unknown option, without starting the server", async () => {
+    const { deps, stdout, stderr, serveMcp } = mcpOutputs(fakePlan([], []));
+
+    const code = await runCli(["mcp", "--bogus"], deps);
+
+    expect(code).toBe(1);
+    expect(stderr.join("\n")).toContain("plumbline mcp");
+    expect(stdout).toEqual([]);
+    expect(serveMcp).not.toHaveBeenCalled();
+  });
+});
+
+describe("plumbline top-level help", () => {
+  test("lists both audit and mcp for --help", async () => {
+    const { deps, stdout, stderr, serveMcp } = mcpOutputs(fakePlan([], []));
+
+    const code = await runCli(["--help"], deps);
+
+    expect(code).toBe(0);
+    expect(stdout).toHaveLength(1);
+    expect(stdout[0]).toMatch(/^\s+audit\s/m);
+    expect(stdout[0]).toMatch(/^\s+mcp\s/m);
+    expect(stderr).toEqual([]);
+    expect(serveMcp).not.toHaveBeenCalled();
+  });
+
+  test("prints the same list to stderr and exits 1 when no command is given", async () => {
+    const { deps, stdout, stderr, serveMcp } = mcpOutputs(fakePlan([], []));
+
+    const code = await runCli([], deps);
+
+    expect(code).toBe(1);
+    expect(stderr.join("\n")).toMatch(/^\s+audit\s/m);
+    expect(stderr.join("\n")).toMatch(/^\s+mcp\s/m);
+    expect(stdout).toEqual([]);
+    expect(serveMcp).not.toHaveBeenCalled();
+  });
+});
