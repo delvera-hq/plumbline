@@ -1,11 +1,20 @@
 {
-  "name": "plumbline",
+  "name": "@delvera-ai/plumbline",
   "version": "0.1.0",
-  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/delvera-hq/plumbline.git"
+  },
   "type": "module",
   "bin": {
     "plumbline": "./dist/cli.js"
   },
+  "files": [
+    "dist/*.js",
+    "README.md",
+    "LICENSE"
+  ],
   "packageManager": "pnpm@11.28.8",
   "scripts": {
     "lint": "biome check .",
