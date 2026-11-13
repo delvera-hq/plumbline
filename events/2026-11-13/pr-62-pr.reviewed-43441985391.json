@@ -1,0 +1,30 @@
+{
+ "schema_version": "1.0",
+ "event_id": "evt_01M7AMKTQQ8WE8FEED0B6N1MAF",
+ "type": "pr.reviewed",
+ "occurred_at": "2026-11-13T14:22:33Z",
+ "producer": {
+  "kind": "controller",
+  "id": "delvera-hq/plumbline/review.yml:record",
+  "workflow_ref": "delvera-hq/plumbline/.github/workflows/review.yml@refs/heads/main",
+  "github_run_id": "43441985391"
+ },
+ "authority": "controller",
+ "correlation": {
+  "run_id": "run_43441355600_1",
+  "tenant": "internal",
+  "project": "plumbline"
+ },
+ "data_schema": "events/pr.reviewed.v1",
+ "data": {
+  "sha": "e26d808f8188262b03b80aea2822c70cf424a70b",
+  "result": "held",
+  "template_version": "v0.1.16",
+  "kind": "product",
+  "pr": 62,
+  "cost_usd_est": 0.0,
+  "reasons": [
+   "346 changed lines, over 300"
+  ]
+ }
+}
