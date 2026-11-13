@@ -11,7 +11,8 @@
     "lint": "biome check .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build": "tsc --outDir dist && cp -r public/. dist/"
+    "build": "tsc --outDir dist && cp -r public/. dist/",
+    "prepack": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
