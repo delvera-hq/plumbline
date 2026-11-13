@@ -1,0 +1,54 @@
+# The name check, as an action every repo in the org can use with no token or secret. Pin it as
+# delvera-hq/org-standards@v1. Changes reach every repo when a Director moves the v1 tag.
+name: Delvera name check
+description: Fails on an event name or field, label, topic or project value that isn't in the Delvera registry.
+inputs:
+  check:
+    description: "repo: scan this repo and, with live, its labels and topics. events: report how many run-log events match event.v1."
+    default: repo
+  root:
+    description: The folder to scan, for check repo.
+    default: .
+  live:
+    description: Also read the repo's live labels and topics through gh. The job needs issues read.
+    default: "true"
+  events-dir:
+    description: The run-log events folder, for check events.
+    default: ""
+  since-days:
+    description: How far back to read events.
+    default: "7"
+  report:
+    description: Write the events report here as Markdown.
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Install PyYAML in its own folder
+      shell: bash
+      run: |
+        python3 -m venv "$RUNNER_TEMP/names-venv"
+        "$RUNNER_TEMP/names-venv/bin/pip" install --quiet --disable-pip-version-check "pyyaml==6.0.3"
+    - name: Check names against delvera-hq/org-standards
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        CHECK: ${{ inputs.check }}
+        ROOT: ${{ inputs.root }}
+        LIVE: ${{ inputs.live }}
+        EVENTS_DIR: ${{ inputs.events-dir }}
+        SINCE: ${{ inputs.since-days }}
+        REPORT: ${{ inputs.report }}
+      run: |
+        set -euo pipefail
+        PY="$RUNNER_TEMP/names-venv/bin/python"
+        case "$CHECK" in
+          repo)
+            ARGS=(check-repo --root "$ROOT")
+            if [ "$LIVE" = "true" ]; then ARGS+=(--repo "$GITHUB_REPOSITORY"); fi ;;
+          events)
+            ARGS=(check-events --dir "$EVENTS_DIR" --since-days "$SINCE")
+            if [ -n "$REPORT" ]; then ARGS+=(--report "$REPORT"); fi ;;
+          *) echo "::error::check must be repo or events"; exit 2 ;;
+        esac
+        "$PY" -I "$GITHUB_ACTION_PATH/names.py" "${ARGS[@]}"

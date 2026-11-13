@@ -1,5 +1,5 @@
 # Changes here are overwritten by `copier update`. Don't edit by hand.
-_commit: v0.1.24
+_commit: v0.1.26
 _src_path: https://github.com/delvera-hq/org-templates.git
 cost_center: cc-products
 flavor: web
@@ -9,4 +9,5 @@ platform: none
 product_name: Plumbline
 project: plumbline
 project_slug: plumbline
+public: true
 tenant: internal
