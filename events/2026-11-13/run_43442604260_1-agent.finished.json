@@ -1,0 +1,38 @@
+{
+ "schema_version": "1.0",
+ "event_id": "evt_01M7AMX6YGVM5NWYA8FXDVK6TE",
+ "type": "agent.finished",
+ "occurred_at": "2026-11-13T14:27:41Z",
+ "producer": {
+  "kind": "controller",
+  "id": "delvera-hq/plumbline/agent.yml:record",
+  "workflow_ref": "delvera-hq/plumbline/.github/workflows/agent.yml@refs/heads/main",
+  "github_run_id": "43442604260"
+ },
+ "authority": "controller",
+ "correlation": {
+  "run_id": "run_43442604260_1",
+  "tenant": "internal",
+  "project": "plumbline",
+  "issue": "delvera-hq/plumbline#64"
+ },
+ "data_schema": "events/agent.finished.v1",
+ "data": {
+  "result": "ok",
+  "started_at": "2026-11-13T14:25:47Z",
+  "sha": "3ff7112662333e7099bec9aa27f176b3c8aad42c",
+  "pr_url": "https://github.com/delvera-hq/plumbline/pull/69",
+  "model": "claude-haiku-5-5",
+  "harness": "claude-code",
+  "harness_version": "2.1.312",
+  "template_version": "v0.1.16",
+  "prompt_sha": "9a8c448bddc55d00",
+  "kind": "product",
+  "trace": "traces/2026-11-13/run_43442604260_1-agent.jsonl.gz",
+  "tokens_in": 195722,
+  "tokens_out": 2827,
+  "turns": 12,
+  "cost_usd_est": 0.0065314399999999995,
+  "duration_s": 19.0
+ }
+}
