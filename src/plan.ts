@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { type FetchLike, readJira, readMonday } from "./clients";
-import type { MondayOptions } from "./monday";
-import type { PlanData } from "./server";
+import { type FetchLike, readJira, readMonday } from "./clients.js";
+import type { MondayOptions } from "./monday.js";
+import type { PlanData } from "./server.js";
 
 const Config = z.object({
   MONDAY_BOARD_ID: z.string().min(1),

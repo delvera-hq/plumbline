@@ -1,8 +1,8 @@
 import { parseArgs } from "node:util";
-import type { FetchLike } from "./clients";
-import { loadPlan, readConfig } from "./plan";
-import { renderDriftReport } from "./report";
-import { findDrift } from "./rules";
+import type { FetchLike } from "./clients.js";
+import { loadPlan, readConfig } from "./plan.js";
+import { renderDriftReport } from "./report.js";
+import { findDrift } from "./rules.js";
 
 /** Everything the audit reads from outside: the settings, the network, the clock, and the two outputs. */
 export interface AuditDeps {

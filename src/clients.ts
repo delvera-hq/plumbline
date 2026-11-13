@@ -1,6 +1,6 @@
-import { type JiraIssue, parseJiraIssue } from "./jira";
-import { type MondayItem, type MondayOptions, type MondayResponse, parseMondayPage } from "./monday";
-import type { PlanItem, WorkIssue } from "./rules";
+import { type JiraIssue, parseJiraIssue } from "./jira.js";
+import { type MondayItem, type MondayOptions, type MondayResponse, parseMondayPage } from "./monday.js";
+import type { PlanItem, WorkIssue } from "./rules.js";
 
 /** The part of fetch the clients use. Tests pass a fake; production passes globalThis.fetch. */
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;

@@ -1,4 +1,4 @@
-import type { EvidenceEntry, Finding, RuleName, Severity } from "./rules";
+import type { EvidenceEntry, Finding, RuleName, Severity } from "./rules.js";
 
 const RULES: readonly RuleName[] = [
   "PLAN_DONE_WORK_OPEN",

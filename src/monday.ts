@@ -1,4 +1,4 @@
-import type { PlanItem, StatusClass } from "./rules";
+import type { PlanItem, StatusClass } from "./rules.js";
 
 export interface MondayOptions {
   /** Column IDs for the three columns the plan reads. */

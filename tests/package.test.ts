@@ -62,3 +62,12 @@ describe("npm pack file list", () => {
     expect(packedPaths).toContain(binTarget);
   });
 });
+
+describe("the built CLI", () => {
+  // The other tests run the TypeScript source. This runs the built JavaScript, as an installed package does,
+  // so an import Node can't resolve, such as one without its .js extension, fails here.
+  test("starts under Node and prints its usage", () => {
+    const output = execFileSync(process.execPath, [binTarget, "--help"], { cwd: root, encoding: "utf8" });
+    expect(output).toContain("Usage: plumbline");
+  });
+});
