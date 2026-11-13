@@ -8,7 +8,7 @@
   },
   "type": "module",
   "bin": {
-    "plumbline": "./dist/cli.js"
+    "plumbline": "dist/cli.js"
   },
   "files": [
     "dist/*.js",
