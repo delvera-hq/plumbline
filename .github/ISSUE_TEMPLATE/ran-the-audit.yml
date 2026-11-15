@@ -1,0 +1,40 @@
+name: I ran the audit
+description: Tell us you ran Plumbline and whether it helped. It takes a minute, and it's how we decide what to build next.
+title: "Ran the audit: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying Plumbline. Please don't paste tokens, board contents, issue keys or anyone's personal data here.
+  - type: dropdown
+    id: found
+    attributes:
+      label: Did it find drift you didn't know about?
+      options:
+        - "Yes"
+        - "Some, but I knew about it"
+        - "No"
+    validations:
+      required: true
+  - type: dropdown
+    id: team
+    attributes:
+      label: How many people plan or work across your monday.com board and Jira?
+      options:
+        - "1 to 5"
+        - "6 to 20"
+        - "21 to 100"
+        - "More than 100"
+  - type: dropdown
+    id: again
+    attributes:
+      label: Would you run it again, or want it to check on a schedule?
+      options:
+        - "I'd run it again by hand"
+        - "I'd want it on a schedule, with an alert"
+        - "Once was enough"
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: What was wrong, missing, or useful. Optional.

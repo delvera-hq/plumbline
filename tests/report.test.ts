@@ -17,7 +17,7 @@ const mondayOptions: MondayOptions = {
 };
 const jiraOptions = { baseUrl: "https://example.atlassian.net" };
 const FEEDBACK =
-  "Did this audit help? Tell us by opening an issue at https://github.com/delvera-hq/plumbline/issues or through the waitlist form on the docs site.";
+  "Did this audit help? Tell us in a minute: https://github.com/delvera-hq/plumbline/issues/new?template=ran-the-audit.yml";
 
 /** Runs the rules over the sample plan page and sample Jira issue. The patch may change the issue first. */
 function fixtureFindings(patchIssue?: (issue: JiraIssue) => void): Finding[] {
