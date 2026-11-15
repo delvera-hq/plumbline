@@ -32,7 +32,7 @@ You need Node.js and a monday.com board with a Jira link column. This takes abou
 3. Print a drift report:
 
    ```sh
-   npx plumbline audit --config plumbline.env
+   npx @delvera-ai/plumbline audit --config plumbline.env
    ```
 
    Add `--out report.md` to write the report to a file instead of the terminal.
@@ -50,7 +50,7 @@ You need Node.js and a monday.com board with a Jira link column. This takes abou
      --env JIRA_BASE_URL=https://example.atlassian.net \
      --env JIRA_EMAIL=you@example.com \
      --env JIRA_TOKEN=... \
-     plumbline -- npx plumbline mcp
+     plumbline -- npx -y @delvera-ai/plumbline mcp
    ```
 
    The MCP server reads its settings from the environment, so pass each one with `--env` as shown. It does not read `plumbline.env`.
