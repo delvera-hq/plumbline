@@ -1,0 +1,225 @@
+# Every event type and every data field, defined once. names.py fails on anything that isn't here.
+# The envelope is contracts/event.v1.schema.json. Correlation fields (run_id, tenant, project, issue, attempt) live in
+# the envelope, never in data.
+#
+# To add a field: add it under `fields` with a type and a meaning, then list it under each event that carries it.
+# To rename: add the new name, and put the old one in its `aliases`. Old events keep reading.
+# The old, never-live list of planned events is in the parts bin, bootstrap/org-control-plane/contracts/events/.
+version: "2.9.0"
+updated: "2026-11-13"
+envelope: contracts/event.v1.schema.json
+
+# Events written before 2026-11-12 (template v0.1.12 and earlier) are flat JSON with these top-level keys. They're
+# legacy: readable through the aliases below, and reported as legacy by the event check.
+legacy_fields: [schema_version, event, run_id, tenant, project, issue, pr, sha, at]
+
+fields:
+  # Outcome
+  result: {type: string, meaning: "What happened. Each event lists its own values."}
+  reasons: {type: array, meaning: "Plain-text reasons for a hold, one per item."}
+  # Git and GitHub
+  sha: {type: string, meaning: "A full commit SHA: the agent's base commit, or the commit merged or deployed."}
+  pr: {type: integer, meaning: "PR number in this repo."}
+  pr_url: {type: string, meaning: "Link to the PR the agent opened."}
+  merged: {type: boolean, meaning: "Whether a closed PR was merged."}
+  merged_by: {type: string, meaning: "GitHub login that merged the PR."}
+  tasks: {type: array, meaning: "Issue numbers of the tasks the planner wrote, in step order."}
+  started_at: {type: string, format: date-time, meaning: "When the run started, UTC."}
+  # Deploy (path 3)
+  cf_version_id: {type: string, meaning: "Cloudflare Worker version ID of the new release."}
+  probe: {type: string, meaning: "The probe job's GitHub result: success, failure or skipped."}
+  baseline_ok: {type: boolean, meaning: "Whether the release live before the deploy passed the probe."}
+  rolled_back_to: {type: string, meaning: "Cloudflare version ID that traffic went back to, if it rolled back."}
+  revert: {type: string, meaning: "What the revert step did: auto_merge, needs_merge, already_open, revert_of_revert or conflict."}
+  revert_pr: {type: string, meaning: "Link to the revert PR."}
+  # Cost
+  cost_usd_est:
+    type: number
+    unit: USD
+    meaning: "The harness's client-side estimate of LLM cost for this event's call. Not a bill."
+    aliases: [critic_cost_usd_est, planner_cost_usd_est]
+  # What ran (path 6). Agent, Critic and planner events carry all of these.
+  model: {type: string, term: model, meaning: "The model ID that did the work, as the harness reported it."}
+  harness: {type: string, term: harness, values: [claude-code, anthropic-sdk], meaning: "What ran the model."}
+  harness_version: {type: string, meaning: "The harness's version, such as 2.1.312 for Claude Code or 1.17.0 for the SDK."}
+  template_version: {type: string, term: template_version, meaning: "The template tag the repo was on, from .copier-answers.yml."}
+  prompt_sha: {type: string, pattern: "^[0-9a-f]{16}$", term: prompt, meaning: "First 16 hex digits of the sha256 of the prompt file."}
+  tokens_in: {type: integer, meaning: "All input tokens, including cache reads and cache writes, across every model the harness called."}
+  tokens_out: {type: integer, meaning: "All output tokens."}
+  turns: {type: integer, meaning: "Model turns. 1 for a single call."}
+  duration_s: {type: number, unit: seconds, meaning: "Wall-clock time of the harness or the call."}
+  kind: {type: string, term: kind, values: [product, factory], meaning: "Product work or factory work. From the repo variable KIND."}
+  trace: {type: string, term: trace, meaning: "Path of the compressed trace on the run-log branch. Empty if none was kept."}
+  # The idea portfolio (path 12)
+  role: {type: string, values: [researcher-a, researcher-b, red-team, judge-1, judge-2, judge-3, pivot], meaning: "Which part of the portfolio pipeline made the call."}
+  score: {type: number, term: idea_score, meaning: "The idea's weighted score out of 100, from the judges' medians on the criteria with verified evidence."}
+  score_low: {type: number, meaning: "The bottom of the score's range: each criterion at its lowest judge, and unknowns at worst."}
+  score_high: {type: number, meaning: "The top of the score's range: each criterion at its highest judge, and unknowns at best."}
+  claims: {type: integer, term: evidence_ledger, meaning: "Claims in the idea's evidence ledger, verified or not."}
+  claims_verified: {type: integer, meaning: "Claims whose page loaded and contains their quote. Only these count as evidence."}
+  claims_failed: {type: integer, meaning: "Claims whose quote wasn't on the page, or whose URL was blocked or too short to check."}
+  claims_unchecked: {type: integer, meaning: "Claims whose page plain code couldn't load. They don't count as evidence."}
+  coverage: {type: number, term: research_protocol, meaning: "Share of protocol questions answered with verified evidence or marked unknown, 0 to 1."}
+  weights_sha: {type: string, pattern: "^[0-9a-f]{16}$", meaning: "First 16 hex digits of the sha256 of portfolio/weights.yaml when the idea was scored."}
+  prediction: {type: string, term: prediction, meaning: "Path of the frozen prediction on the run-log branch."}
+  director: {type: string, term: director, meaning: "GitHub login of the Director who acted."}
+  parent: {type: integer, term: idea, meaning: "The idea this one is a variant of, in the same repo. Absent for an original idea."}
+  variants: {type: array, meaning: "Issue numbers of the variants a pivot review filed."}
+  round: {type: integer, meaning: "Which round of pivots this is, in its line of ideas. At most pivot_rounds_max."}
+  line_spend_usd: {type: number, unit: USD, meaning: "API spend so far on every idea in the line, from portfolio.call events. Never part of a score."}
+  remaining_api_usd: {type: number, unit: USD, meaning: "Estimated API spend left to a test release of a nearly-built idea."}
+  remaining_director_hours: {type: number, unit: hours, meaning: "Estimated Director hours left to a test release."}
+  ongoing_hours_per_month: {type: number, unit: hours, meaning: "Estimated monthly support and upkeep once released."}
+  pass_mark: {type: string, meaning: "The measurable result a test release must reach by its stop date, set before launch."}
+  stop_date: {type: string, pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", meaning: "The date by which a test release must meet its pass mark, or its line stops."}
+  chosen: {type: string, term: naming_gate, meaning: "The product name a Director chose for an idea, from its Naming block."}
+  trademark: {type: string, values: [clear, conflict, unchecked], term: naming_gate, meaning: "A Director's trademark screen of the chosen name against the registers."}
+  screened: {type: string, pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", term: naming_gate, meaning: "The date a Director screened the chosen name."}
+  grader: {type: string, values: [director, agent], term: grade, meaning: "Who formed the grade: the Director who posted it, or a reviewing agent whose grade the Director passed on with by=agent."}
+  grade_depth: {type: integer, term: grade, meaning: "A Director's grade, 1 to 5: was the research deep enough?"}
+  grade_competitors: {type: integer, term: grade, meaning: "A Director's grade, 1 to 5: did it find the real competitors?"}
+  grade_correct: {type: integer, term: grade, meaning: "A Director's grade, 1 to 5: is it right?"}
+  decision: {type: string, values: [approved, parked, stopped], meaning: "A Director's decision on an idea, from its label."}
+  ideas: {type: integer, meaning: "Scored ideas in the weekly portfolio report."}
+  report_issue: {type: string, meaning: "Link to the issue that holds the weekly portfolio report."}
+  research_sources: {type: array, term: research_report, meaning: "Where each research report came from, as kind:harness:model, such as local:claude-code:claude-opus-5-5 or ci:anthropic-sdk:claude-sonnet-5-5."}
+  # Migration (path 17)
+  migration_sources: {type: array, term: migration, meaning: "The GitHub users and orgs an inventory run read, such as delvera-ai."}
+  repos: {type: integer, meaning: "Repos the inventory wrote a record for in this run."}
+  repos_new: {type: integer, meaning: "Of those, repos that had no record before."}
+  repos_with_unknowns: {type: integer, meaning: "Records with at least one fact the Director's token couldn't read. An unknown blocks a cutover check."}
+  truncated: {type: boolean, meaning: "Whether a source's repo list reached its limit, so the inventory isn't complete."}
+  from_stage: {type: string, term: migration, values: [inventoried, triaged, dossier, building, verified, done], meaning: "The migration stage a record left."}
+  to_stage: {type: string, term: migration, values: [inventoried, triaged, dossier, building, verified, done], meaning: "The migration stage a record entered."}
+  director_minutes: {type: number, unit: minutes, meaning: "Minutes a Director spent on this step, typed in by the Director, since most migration work happens off GitHub."}
+
+events:
+  agent.finished:
+    aliases: [agent_finished]
+    producer: agent.yml, record job
+    authority: controller
+    meaning: An agent run on a task ended, with or without a PR.
+    required: [result, cost_usd_est]
+    optional: [started_at, sha, pr_url, model, harness, harness_version, template_version, prompt_sha, tokens_in,
+      tokens_out, turns, duration_s, kind, trace]
+    values:
+      result: [ok, budget_capped, max_turns, agent_error, escalated, refused, job_failed, oversized, no_change, publish_failed]
+  pr.closed:
+    aliases: [pr_closed]
+    producer: run-log.yml, pr-closed job
+    authority: controller
+    meaning: A PR to main closed, merged or not.
+    required: [pr, merged]
+    optional: [merged_by, sha]
+  pr.reviewed:
+    aliases: [review]
+    producer: review.yml, record job
+    authority: controller
+    meaning: Path 4 decided whether an agent PR merges with no Director.
+    required: [pr, result]
+    optional: [sha, reasons, cost_usd_est, model, harness, harness_version, template_version, prompt_sha, tokens_in,
+      tokens_out, turns, duration_s, kind, trace]
+    values:
+      result: [auto_merged, held, merge_failed, failed]
+  brief.planned:
+    aliases: [brief_planned]
+    producer: brief.yml, create job
+    authority: controller
+    meaning: The planner assessed a brief, and its tasks were written, or it refused.
+    required: [result]
+    optional: [tasks, cost_usd_est, model, harness, harness_version, template_version, prompt_sha, tokens_in, tokens_out,
+      turns, duration_s, kind, trace]
+    values:
+      result: [planned, not_planned]
+  deploy.finished:
+    aliases: [deployed]
+    producer: deploy.yml, record job
+    authority: controller
+    meaning: A push to main went through build, deploy and probe, and rollback if the probe failed.
+    required: [sha, result]
+    optional: [cf_version_id, probe, baseline_ok, rolled_back_to, revert, revert_pr]
+    values:
+      result: [ok, failed, skipped, rolled_back, rollback_unverified, rollback_failed]
+  portfolio.call:
+    producer: portfolio.yml, record job
+    authority: controller
+    meaning: One model call in the idea portfolio pipeline ended. Researchers, red team and judges each write one.
+    required: [role, result, cost_usd_est]
+    optional: [model, harness, harness_version, template_version, prompt_sha, tokens_in, tokens_out, turns, duration_s, kind,
+      trace]
+    values:
+      result: [ok, bad_output, api_error, budget_capped]
+  idea.assessed:
+    producer: portfolio.yml, record job
+    authority: controller
+    meaning: An idea was researched, checked and scored, or parked by a hard limit, or the research didn't finish.
+    required: [result]
+    optional: [score, score_low, score_high, reasons, claims, claims_verified, claims_failed, claims_unchecked, coverage,
+      weights_sha, prediction, cost_usd_est, research_sources, parent]
+    values:
+      result: [scored, parked, failed]
+  idea.graded:
+    producer: portfolio.yml, grade job
+    authority: controller
+    meaning: A Director graded an idea's research report.
+    required: [director, grade_depth, grade_competitors, grade_correct]
+    optional: [grader]
+  idea.decided:
+    producer: portfolio.yml, decide job
+    authority: controller
+    meaning: A Director approved, parked or stopped an idea with a label.
+    required: [decision, director]
+  portfolio.reported:
+    producer: portfolio-weekly.yml
+    authority: controller
+    meaning: The weekly portfolio report was written.
+    required: [ideas]
+    optional: [report_issue]
+  idea.pivoted:
+    producer: portfolio.yml, pivot-record job
+    authority: controller
+    meaning: A pivot review of a weak idea filed variants, or plain code refused it under the rules on rounds, budget and evidence, or it failed.
+    required: [result]
+    optional: [variants, round, line_spend_usd, cost_usd_est]
+    values:
+      result: [proposed, refused, failed]
+  idea.release_checked:
+    producer: portfolio.yml, release-check job
+    authority: controller
+    meaning: Plain code decided whether a nearly-built idea is cheap enough to release as a test, whatever its score.
+    required: [result, director]
+    optional: [remaining_api_usd, remaining_director_hours, ongoing_hours_per_month, pass_mark, stop_date]
+    values:
+      result: [release_test, not_cheap, needs_facts]
+  idea.named:
+    producer: portfolio.yml, naming job
+    authority: controller
+    meaning: Plain code checked an idea's Naming block and said whether a build may start under the chosen name.
+    required: [result, director]
+    optional: [chosen, trademark, screened]
+    values:
+      result: [ready, not_ready]
+  migration.inventory_run:
+    producer: bootstrap/path-17/inventory.py, run by a Director in a terminal
+    authority: controller
+    meaning: A Director ran the read-only migration inventory, which wrote or refreshed one migration.v1 record per repo.
+    required: [result, migration_sources, repos]
+    optional: [repos_new, repos_with_unknowns, truncated, duration_s, cost_usd_est, director_minutes]
+    values:
+      result: [ok, partial, failed]
+  migration.decided:
+    producer: bootstrap/path-17/migrate.py decide, run by a Director
+    authority: controller
+    meaning: The Directors' decisions (tier, disposition, group, facets and the rest) were written into migration.v1 records.
+    required: [result, repos]
+    optional: [cost_usd_est, director_minutes]
+    values:
+      result: [ok]
+  migration.stage_changed:
+    producer: bootstrap/path-17/migrate.py advance, run by a Director
+    authority: controller
+    meaning: A migration record moved forward one stage, after plain code checked the evidence that stage needs.
+    required: [result, from_stage, to_stage]
+    optional: [sha, cost_usd_est, director_minutes]
+    values:
+      result: [ok]

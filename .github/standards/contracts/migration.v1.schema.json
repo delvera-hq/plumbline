@@ -1,0 +1,323 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/delvera-hq/org-standards/contracts/migration.v1.schema.json",
+  "title": "migration.v1",
+  "description": "One repo in a migration source, and where its migration stands (path 17). The read-only inventory writes `facts`, and only the keys below: anything else is dropped before it's written. A Director writes `decision`. `migrate.py` changes `state`. A fact the Director's token couldn't read is null and named in facts.unknown, and an unknown blocks any cutover check that needs it. Nullable fields carry no type, because names.py's checker has no union types. Classification (section 16 of the design): decision.group is the lineage group and decision.facets the confirmed facet values, both registered in classification.yaml. facts.repo.stack and facts.repo.form_guess are derived by the inventory. Added 2026-11-13; both are optional, so older records still read.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "tenant",
+    "project",
+    "source",
+    "archive_name",
+    "source_pin",
+    "facts",
+    "decision",
+    "state",
+    "updated_at"
+  ],
+  "properties": {
+    "schema": {
+      "const": "migration.v1"
+    },
+    "tenant": {
+      "type": "string",
+      "pattern": "^(internal|client-[a-z0-9-]+)$"
+    },
+    "project": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner",
+        "name"
+      ],
+      "properties": {
+        "owner": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$"
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]{1,100}$"
+        }
+      }
+    },
+    "archive_name": {
+      "type": "string",
+      "description": "The raw repo's name in delvera-archive: <source-owner>-<repo>, lowercased."
+    },
+    "source_pin": {
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "The source commit, set at building. Null before."
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "state": {
+      "enum": [
+        "inventoried",
+        "triaged",
+        "dossier",
+        "building",
+        "verified",
+        "done"
+      ]
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tier",
+        "disposition",
+        "mechanism",
+        "history",
+        "pillar",
+        "scope",
+        "data_class",
+        "ownership"
+      ],
+      "properties": {
+        "tier": {
+          "enum": [
+            null,
+            1,
+            2,
+            3,
+            4
+          ]
+        },
+        "disposition": {
+          "enum": [
+            null,
+            "migrate",
+            "own-org",
+            "deferred",
+            "left-out"
+          ]
+        },
+        "mechanism": {
+          "enum": [
+            null,
+            "sibling",
+            "in-place"
+          ]
+        },
+        "history": {
+          "enum": [
+            null,
+            "fresh",
+            "filtered"
+          ]
+        },
+        "pillar": {
+          "enum": [
+            null,
+            "services",
+            "products",
+            "research",
+            "operations"
+          ]
+        },
+        "scope": {
+          "enum": [
+            null,
+            "org",
+            "product",
+            "client"
+          ]
+        },
+        "data_class": {
+          "enum": [
+            null,
+            "public",
+            "internal",
+            "confidential",
+            "restricted"
+          ]
+        },
+        "ownership": {
+          "maxLength": 300
+        },
+        "group": {
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "description": "The lineage group. Null until set."
+        },
+        "target": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$",
+          "description": "The org the repo goes to, such as delvera-hq. Null until the trading org exists, or for left-out repos."
+        },
+        "facets": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "domain": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
+              }
+            },
+            "form": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
+              }
+            },
+            "capability": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
+              }
+            },
+            "audience": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
+              }
+            }
+          },
+          "description": "Confirmed facet values. stack isn't here: it's a fact, in facts.repo.stack."
+        }
+      }
+    },
+    "facts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scanned_at",
+        "inventory_version",
+        "unknown",
+        "repo",
+        "deploys",
+        "automation",
+        "rules",
+        "content",
+        "risk",
+        "org"
+      ],
+      "properties": {
+        "scanned_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "inventory_version": {
+          "type": "string"
+        },
+        "unknown": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "repo": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "visibility": {},
+            "archived": {},
+            "fork": {},
+            "pushed_at": {},
+            "size_kb": {},
+            "default_branch": {},
+            "head_sha": {},
+            "primary_language": {},
+            "languages": {},
+            "licence": {},
+            "issues": {},
+            "prs": {},
+            "stack_markers": {},
+            "kind_guess": {},
+            "stack": {},
+            "form_guess": {}
+          }
+        },
+        "deploys": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pages": {},
+            "environments": {},
+            "deployments": {},
+            "hosting_files": {},
+            "domains": {},
+            "dns": {},
+            "live_status": {}
+          }
+        },
+        "automation": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "secret_names": {},
+            "environment_secret_names": {},
+            "variable_names": {},
+            "dependabot_secret_names": {},
+            "deploy_keys": {},
+            "webhook_hosts": {},
+            "workflows": {},
+            "pull_request_target": {},
+            "actions_enabled": {},
+            "allowed_actions": {},
+            "workflow_token_default": {},
+            "workflows_can_approve_prs": {},
+            "self_hosted_runners": {},
+            "artifacts": {},
+            "caches": {},
+            "runs": {},
+            "external_ci": {}
+          }
+        },
+        "rules": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rulesets": {},
+            "default_branch_protection": {},
+            "codeowners": {}
+          }
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "packages": {},
+            "releases": {},
+            "lfs_files": {},
+            "submodules": {}
+          }
+        },
+        "risk": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "history_scan": {},
+            "licence_files": {},
+            "notice_files": {},
+            "commits_by_directors": {},
+            "commits_by_others": {},
+            "proposed_data_class": {}
+          }
+        },
+        "org": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "owner_kind": {},
+            "plan": {},
+            "apps": {},
+            "org_secrets": {}
+          }
+        }
+      }
+    }
+  }
+}

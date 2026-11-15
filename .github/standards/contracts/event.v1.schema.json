@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/delvera-hq/org-standards/contracts/event.v1.schema.json",
+  "title": "Event",
+  "description": "The envelope for every run-log event. The type and the data fields are registered in contracts/events/registry.yaml. Changed on 2026-11-12, before any live use: run_id also accepts GitHub run IDs, trace_id and cost_center are optional, and gate_class is gone.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "type", "occurred_at", "producer", "authority", "correlation", "data_schema", "data"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "event_id": { "type": "string", "pattern": "^evt_[0-9A-HJKMNP-TV-Z]{26}$" },
+    "type": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+      "description": "A dotted name registered in contracts/events/registry.yaml, such as agent.finished."
+    },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": { "enum": ["agent", "controller", "broker", "gateway", "github", "director"] },
+        "id": { "type": "string", "minLength": 1, "maxLength": 200, "description": "repo/workflow-file:job for a workflow" },
+        "workflow_ref": { "type": "string", "maxLength": 300 },
+        "github_run_id": { "type": "string", "pattern": "^[0-9]+$" }
+      }
+    },
+    "authority": {
+      "enum": ["platform", "gateway", "controller", "agent_claim"],
+      "description": "Only platform, gateway and controller events may drive budget or gate decisions."
+    },
+    "correlation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "tenant", "project"],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "pattern": "^run_([0-9A-HJKMNP-TV-Z]{26}|[0-9]+_[0-9]+)$",
+          "description": "The run this event is about: for an agent PR, the agent run that made it; otherwise the workflow run that wrote the event."
+        },
+        "parent_run_id": { "type": "string", "pattern": "^run_([0-9A-HJKMNP-TV-Z]{26}|[0-9]+_[0-9]+)$" },
+        "trace_id": { "type": "string", "pattern": "^(?!0{32})[0-9a-f]{32}$" },
+        "span_id": { "type": "string", "pattern": "^(?!0{16})[0-9a-f]{16}$" },
+        "tenant": { "type": "string", "pattern": "^(internal|client-[a-z0-9-]+)$" },
+        "cost_center": { "type": "string", "pattern": "^cc-[a-z0-9-]+$" },
+        "project": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "issue": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[0-9]+$" },
+        "attempt": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "environment": { "enum": ["sandbox", "preview", "staging", "production"] },
+    "data_schema": { "type": "string", "minLength": 1, "description": "events/<type>.v1, the entry in the registry" },
+    "data": { "type": "object" }
+  }
+}

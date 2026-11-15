@@ -58,13 +58,14 @@ jobs:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             /.github/agent/
+            /.github/standards/
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: run-log
           path: log
           persist-credentials: false
       - name: Check this week's events against event.v1
-        uses: delvera-hq/org-standards@v1
+        uses: ./.github/standards # A public repo can't use the private action, so it runs its pinned copy.
         continue-on-error: true # The summary still goes out, and says the check didn't run.
         with:
           check: events

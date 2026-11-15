@@ -1,0 +1,125 @@
+# Every project group and facet value. names.py fails on a record or a repo topic that uses one that isn't here.
+# Groups are lineage: the one project family a repo is a version or part of. Facets classify, and hold several values.
+# Add a value in the same change set as the work that needs it, with its meaning. A renamed value keeps its old one in
+# `aliases`. A value only one repo uses is a sign it's too fine. Design: migration-design.md, section 16.
+# Each value becomes a GitHub topic: <topic_prefix><value>, such as group-ember or form-mobile-app.
+version: "1.0.0"
+updated: "2026-11-13"
+
+groups:
+  topic_prefix: group-
+  values:
+    delvera: {meaning: "The company's own website and app."}
+    ad-wars: {meaning: "Ad Wars."}
+    moments: {meaning: "Moments."}
+    wijn: {meaning: "Wijn, the app and its companion repo."}
+    juiceless: {meaning: "Juiceless."}
+    socialz: {meaning: "Socialz."}
+    sorted: {meaning: "Sorted, its app and project repos."}
+    sports-research: {meaning: "Sports research."}
+    wedding-os: {meaning: "Wedding OS."}
+    public-travel: {meaning: "Public travel."}
+    spottr: {meaning: "Spottr."}
+    cv-rank: {meaning: "CV Rank."}
+    ember: {meaning: "Ember, a biotech product in seven repos: API, web, agents, data, shared, infra and bio."}
+    literature-api: {meaning: "The literature API."}
+    bio-miner: {meaning: "Bio miner."}
+    researchbench: {meaning: "Researchbench, the bio pilot pack."}
+    stratum: {meaning: "Stratum: the library, frontend and kernel."}
+    system-representation: {meaning: "System representation."}
+    semantic-repo: {meaning: "Semantic repo."}
+    terrane: {meaning: "Terrane."}
+    lithify: {meaning: "Lithify, published on PyPI."}
+    splay: {meaning: "Splay."}
+    retessera: {meaning: "Retessera."}
+    tractable: {meaning: "Tractable and its agents."}
+    ai-router: {meaning: "The AI router MCP build pack."}
+    vibe-agent: {meaning: "Vibe agent."}
+    lab: {meaning: "Donovan's lab, for experiments."}
+    orion: {meaning: "Orion."}
+    research-workspace: {meaning: "The research workspace."}
+    fenster: {meaning: "Fenster, docs."}
+    continuous-modular-learning: {meaning: "Continuous modular learning, docs."}
+    ecommerce-scraper: {meaning: "The e-commerce scrapers, two versions."}
+    property-scraper: {meaning: "A property scraper idea. Nearly empty."}
+    optimization-engine: {meaning: "An optimization engine idea. Nearly empty."}
+    data-api: {meaning: "A data API idea. Nearly empty."}
+
+facets:
+  domain:
+    topic_prefix: domain-
+    meaning: What field the project is in. Set by a Director.
+    values:
+      biotech: {meaning: "Biology, life sciences and their research tools."}
+      finance: {meaning: "Trading, investing and markets. Brings in the trading controls."}
+      food-drink: {meaning: "Food, drink and dining."}
+      social: {meaning: "Social apps and content."}
+      sport: {meaning: "Sport and fitness."}
+      travel: {meaning: "Travel and places."}
+      recruiting: {meaning: "Hiring and careers."}
+      events: {meaning: "Events and life occasions."}
+      commerce: {meaning: "Shopping, products and prices."}
+      advertising: {meaning: "Ads and marketing."}
+      developer-tools: {meaning: "Tools for software and AI builders."}
+      research-tools: {meaning: "Tools for research and knowledge work."}
+      company: {meaning: "Delvera's own presence and operations."}
+  form:
+    topic_prefix: form-
+    meaning: What shape the project is. Proposed by the inventory, confirmed by a Director. A project with apps on several platforms has several values.
+    values:
+      mobile-app: {meaning: "An iPhone or Android app."}
+      web-app: {meaning: "A site or app served in a browser."}
+      desktop-app: {meaning: "A macOS, Windows or Linux app."}
+      api: {meaning: "A service whose product is its API."}
+      service: {meaning: "A deployed backend or worker that isn't mainly an API."}
+      library: {meaning: "Code imported by other code, published or not."}
+      cli: {meaning: "A command-line tool."}
+      agent: {meaning: "An AI agent or a set of agents."}
+      pipeline: {meaning: "A data job: collect, transform and load."}
+      infra: {meaning: "Infrastructure as code."}
+      notebook: {meaning: "Mostly notebooks and analysis."}
+      docs: {meaning: "Writing and notes only."}
+      empty: {meaning: "Nearly no content. Recorded and archived, with nothing to port."}
+  capability:
+    topic_prefix: cap-
+    meaning: What the project does technically. Proposed at triage, confirmed by a Director.
+    values:
+      llm: {meaning: "Calls a large language model. Brings in cost caps and evals."}
+      agents: {meaning: "Runs multi-step agents with tools."}
+      retrieval: {meaning: "Search or retrieval over documents."}
+      scraping: {meaning: "Collects data from other sites."}
+      optimization: {meaning: "Solves optimization problems."}
+      ml-model: {meaning: "Trains or serves its own ML model."}
+      simulation: {meaning: "Simulates a system."}
+      knowledge-graph: {meaning: "Builds or queries a graph of entities."}
+  audience:
+    topic_prefix: audience-
+    meaning: Who the project is for. Set by a Director.
+    values:
+      consumer: {meaning: "The public."}
+      business: {meaning: "Companies and their staff."}
+      researchers: {meaning: "Scientists and researchers."}
+      internal: {meaning: "Delvera's own use."}
+  stack:
+    topic_prefix: stack-
+    meaning: What the project is built with. Written by the inventory from its facts, never by hand.
+    values:
+      python: {meaning: "Python."}
+      typescript: {meaning: "TypeScript."}
+      javascript: {meaning: "JavaScript, when there's no TypeScript."}
+      flutter: {meaning: "Flutter and Dart."}
+      swift: {meaning: "Swift, for native Apple code."}
+      kotlin: {meaning: "Kotlin, for native Android code."}
+      rust: {meaning: "Rust."}
+      go: {meaning: "Go."}
+      c: {meaning: "C."}
+      cpp: {meaning: "C++."}
+      java: {meaning: "Java."}
+      astro: {meaning: "Astro."}
+      jupyter: {meaning: "Jupyter notebooks."}
+      terraform: {meaning: "Terraform (HCL)."}
+      postgres: {meaning: "PostgreSQL code in the repo."}
+      neo4j: {meaning: "Neo4j (Cypher)."}
+      firebase: {meaning: "Hosted or deployed on Firebase."}
+      docker: {meaning: "Built or run with Docker."}
+      github-pages: {meaning: "Served by GitHub Pages."}

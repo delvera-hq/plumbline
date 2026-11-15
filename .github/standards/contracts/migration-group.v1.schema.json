@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/delvera-hq/org-standards/contracts/migration-group.v1.schema.json",
+  "title": "migration-group.v1",
+  "description": "One lineage group's triage (migration design, section 16): what the family is for, how it consolidates, its order, and which members are superseded. Drafted by plain code or a sandboxed model, confirmed by a Director. A member can't move past triaged until its group record is confirmed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "group", "purpose", "members", "consolidation", "order", "superseded", "status", "confirmed_by", "confirmed_on", "notes"],
+  "properties": {
+    "schema": {"const": "migration-group.v1"},
+    "group": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "purpose": {"type": "string", "minLength": 1, "maxLength": 600},
+    "members": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"}},
+    "consolidation": {"enum": ["merge", "share-library", "separate"], "description": "merge: one repo. share-library: separate repos that share code. separate: unrelated in code."},
+    "order": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"}, "description": "Members in migration order. Superseded members are left out."},
+    "superseded": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"}, "description": "Members that go only to the archive."},
+    "status": {"enum": ["draft", "confirmed"]},
+    "confirmed_by": {"pattern": "^[A-Za-z0-9-]{1,39}$", "description": "The Director's GitHub login. Null while a draft."},
+    "confirmed_on": {"pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "Null while a draft."},
+    "notes": {"type": "array", "items": {"type": "string", "maxLength": 600}}
+  }
+}

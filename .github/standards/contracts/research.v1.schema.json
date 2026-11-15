@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/delvera-hq/org-standards/contracts/research.v1.schema.json",
+  "title": "research.v1",
+  "description": "One research report on one idea, from any researcher: a Director's session on a subscription, or a CI job on an API. Plain code in the portfolio checks every claim's quote against its page, so only the shape is trusted here, never the content.",
+  "type": "object",
+  "required": [
+    "schema",
+    "idea",
+    "created_at",
+    "producer",
+    "output"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "research.v1"
+    },
+    "idea": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "producer": {
+      "type": "object",
+      "required": [
+        "kind",
+        "harness",
+        "model"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "local",
+            "ci"
+          ]
+        },
+        "harness": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "director": {
+          "type": "string",
+          "description": "GitHub login of the Director whose session ran it. Local only."
+        },
+        "skill_version": {
+          "type": "string"
+        },
+        "protocol_version": {
+          "type": "integer"
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "required": [
+        "answers",
+        "claims",
+        "competitors",
+        "competitor_search",
+        "never_list_hits"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "answers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "question",
+              "status",
+              "answer",
+              "claims"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "question": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "answered",
+                  "unknown"
+                ]
+              },
+              "answer": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "claims": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "claims": {
+          "type": "array",
+          "maxItems": 80,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "question",
+              "text",
+              "url",
+              "quote",
+              "kind"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,20}$"
+              },
+              "question": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 600
+              },
+              "url": {
+                "type": "string",
+                "pattern": "^https?://"
+              },
+              "quote": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 400
+              },
+              "kind": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "competitors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "url",
+              "pricing",
+              "claims"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "url": {
+                "type": "string"
+              },
+              "pricing": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "claims": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "competitor_search": {
+          "type": "string",
+          "maxLength": 600
+        },
+        "never_list_hits": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  }
+}

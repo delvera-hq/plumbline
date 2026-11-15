@@ -41,4 +41,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: delvera-hq/org-standards@v1
+      # A public repo can't use the private org-standards action. It runs the pinned copy from the base branch, so a
+      # PR can't change the check that checks it.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          path: .standards-base
+          persist-credentials: false
+          sparse-checkout: .github/standards
+      - name: Use this PR's copy only if the base branch has none yet
+        run: |
+          if [ ! -f .standards-base/.github/standards/action.yml ]; then
+            echo "::warning::The base branch has no copy of org-standards yet, so this PR's own copy runs. That happens once, on the PR that adds it."
+            mkdir -p .standards-base/.github && cp -R .github/standards .standards-base/.github/standards
+          fi
+      - uses: ./.standards-base/.github/standards

@@ -1,0 +1,244 @@
+# Delvera's glossary: the kinds of things the organization talks about, and how they relate.
+# This is the live copy, published to delvera-hq/org-standards. A Director merges every change.
+# Rules:
+#   - A new term arrives with its entry, in the same change set as the work that needs it.
+#   - A renamed term keeps its old name in `aliases`, so old records still read.
+#   - A stale term stays, with `status: replaced` and `replaced_by`, so a reader can find its successor.
+#   - Client terms never go here. They live in that client's own repos.
+# Instances (which projects, labels and events exist) are in contracts/names.yaml and contracts/events/registry.yaml.
+version: "2.5.0"
+updated: "2026-11-13"
+terms:
+  # People and actors
+  director:
+    definition: One of the people who own and govern the organization. Only a Director starts work, merges a held PR, or changes the standards.
+    identifier: GitHub login, listed in the repo variable AGENT_TRIGGER_ALLOWLIST
+    not_to_be_confused_with: [agent]
+  agent:
+    definition: An LLM-driven actor that a workflow runs for one task. It holds no write credential, and its output is data, such as a patch or a plan, that plain code checks.
+    relationships:
+      - {verb: runs_under, target: harness}
+      - {verb: uses, target: model}
+      - {verb: performs, target: run}
+  critic:
+    definition: The agent that reviews an agent PR against its task, with no tools. Its verdict is data for plain code, which has the last word (path 4).
+  planner:
+    definition: The agent that turns a brief into an assessment and up to 5 tasks, with no tools (path 2).
+  touch:
+    definition: One Director action on a run's issue or PR, such as a label, comment, review or merge. Counted from GitHub in the weekly summary.
+    aliases: [director_touch]
+
+  # Work
+  brief:
+    definition: A short statement of wanted work, written by a Director. The planner turns it into tasks.
+    identifier: a GitHub issue with the `brief` label, later a brief.v1 record (path 10)
+    relationships:
+      - {verb: becomes, target: task, cardinality: "0..5"}
+  task:
+    definition: One small change with acceptance criteria, small enough for one agent run. A Director writes it, or the planner writes it from a brief.
+    identifier: a GitHub issue that has an "Acceptance criteria" heading
+    relationships:
+      - {verb: part_of, target: brief, cardinality: "0..1"}
+      - {verb: started_by, target: run, cardinality: "0..n"}
+  spec:
+    definition: The task as a data file, spec.md, built from the issue. The agent reads it as untrusted data, never as instructions.
+  escalation:
+    definition: An agent's request to stop and hand the task to a Director, written as .agent/escalate.json with a reason code. It's a good outcome, not a failure.
+    values: [UNCLEAR_INTENT, NO_FIT, NEEDS_DIRECTOR_PATH, SECURITY_CONCERN, OUT_OF_SCOPE]
+  hold:
+    definition: Path 4's decision to leave a PR for a Director, with the reasons in a comment.
+    aliases: [held]
+  approval:
+    definition: A Director's recorded yes, such as a label, a merge or a review. It's always in Git or GitHub, under the Director's own login.
+
+  # Runs and records
+  run:
+    definition: One execution of a workflow. Retries share the GitHub run ID and raise the attempt.
+    identifier: "run_<github run id>_<attempt>, or run_<ULID> from a broker later"
+    relationships:
+      - {verb: emits, target: event, cardinality: "1..n"}
+      - {verb: keeps, target: trace, cardinality: "0..1"}
+  event:
+    definition: An immutable record of one thing that happened, in the event.v1 envelope, with a type registered in contracts/events/registry.yaml.
+    identifier: "evt_<ULID>"
+  run_log:
+    definition: The `run-log` branch of each repo. events/ holds one JSON file per event, and traces/ holds the compressed traces.
+    aliases: [run_ledger, ledger]
+  trace:
+    definition: The full record of what an agent did in one run, kept compressed in the run log. For Claude Code, it's the stream-json transcript. For a single LLM call, it's the request and the response.
+    not_to_be_confused_with: [trace_id]
+  trace_id:
+    definition: An optional W3C trace ID in an event's correlation block, which joins events across systems. It isn't a trace.
+  weekly_summary:
+    definition: The issue the run-log workflow opens each Monday, with runs, spend by model, results, touches and the event check.
+  kind:
+    definition: Whether a run works on a product or on the factory itself. A factory run changes the pipeline, the templates or the standards.
+    values: [product, factory]
+    not_to_be_confused_with: [scope]
+
+  # What ran
+  model:
+    definition: The LLM that did the work, by its exact ID, such as claude-haiku-5-5.
+  harness:
+    definition: The program that runs a model as an agent and gives it tools, such as claude-code, or anthropic-sdk for a single call with no tools.
+  adapter:
+    definition: The one script that connects a harness to the pipeline. In, spec.md and the workspace. Out, the tree, escalate.json, and a result with state, cost, model, harness and trace (path 7). run-agent.sh is the first adapter.
+  prompt:
+    definition: The fixed instructions for an agent, kept as a versioned file in the template, such as agent-prompt.md. The event records its sha256 as prompt_sha.
+  replay:
+    definition: Rerunning a past task from its base commit and spec with a chosen model, harness or prompt, without publishing, to compare configurations (path 8).
+
+  # Organization and strategy
+  project_group:
+    definition: A project's lineage, the one family of related projects it's a version or part of, such as ember or stratum. Group triage decides whether a family merges, shares a library or stays apart, and its learnings gather in one group dossier.
+    identifier: "a value in contracts/classification.yaml groups, and the repo topic group-<value>"
+    relationships:
+      - {verb: contains, target: project, cardinality: "1..*"}
+  facet:
+    definition: One way of classifying a project, with several values allowed - domain, form, capability, audience or stack. Facet values select the policies that apply to a project, and every project is classified before work on it starts.
+    identifier: "a value in contracts/classification.yaml facets, and the repo topic <prefix><value>, such as form-mobile-app"
+    not_to_be_confused_with: [project_group]
+  migration:
+    definition: Bringing one existing repo from a migration source into delvera-hq, from its read-only inventory to a deployed repo that works the same. Its stages are inventoried, dossier, building, verified and done (path 17).
+    identifier: a migration.v1 record in delvera-hq/portfolio, named <source-owner>-<repo>
+    relationships:
+      - {verb: becomes, target: project, cardinality: "0..1"}
+  project:
+    definition: A long-lived body of work with one Tenant and one cost center. It maps to one or more repos.
+    identifier: "project slug, pattern ^[a-z0-9][a-z0-9-]*$"
+    relationships:
+      - {verb: belongs_to, target: tenant, cardinality: "1"}
+      - {verb: charged_to, target: cost_center, cardinality: "1"}
+      - {verb: has, target: scope, cardinality: "1"}
+      - {verb: in, target: pillar, cardinality: "1"}
+  tenant:
+    definition: The data isolation boundary. internal, or client-<slug>. Data and credentials never cross a tenant.
+    identifier: "pattern ^(internal|client-[a-z0-9-]+)$"
+  cost_center:
+    definition: The key that spend is charged to. Each project has one.
+    identifier: "pattern ^cc-[a-z0-9-]+$"
+  scope:
+    definition: Who a project serves. org is the company's own operations, product is something the company sells, client is work for one client.
+    values: [org, product, client]
+    not_to_be_confused_with: [kind]
+  pillar:
+    definition: The top-level grouping of the company's work. Shown as a repo topic, pillar-<name>, so a project can move without breaking links.
+    values: [services, products, research, operations]
+  product_line:
+    definition: A grouping inside the products pillar. Shown as a repo topic, line-<name>.
+    values: [foundational, ai-first, applications]
+  operations_domain:
+    definition: One area of the company's own operations, such as growth or finance. Each has one ops-<domain> repo, with scope org and the pillar-operations topic.
+  routing_card:
+    definition: A short card for each destination that says what belongs there, what doesn't, and the names it's confused with. The router and the planner both read it (path 10).
+  work_class:
+    definition: The kind of commitment a brief or project is. A brief inherits it from its Director-merged project.
+    status: reserved
+    note: The Directors set the values with NORTHSTAR.md. contracts/names.yaml has no values until they confirm them.
+  bet:
+    definition: A time-limited strategic wager in NORTHSTAR.md, with an expiry date and a stop condition. Bet work links to one bet.
+    status: reserved
+    note: The Directors write the bets in NORTHSTAR.md. No bet is registered yet.
+
+  # The idea portfolio (path 12)
+  idea:
+    definition: A possible product, written by a Director, held as an issue in the portfolio repo. It moves captured, scanned, researched, scored, tested, approved, building, live, or parked or stopped at any point. Nothing is deleted.
+    identifier: a GitHub issue with the `idea` label in the portfolio repo
+    relationships:
+      - {verb: has, target: evidence_ledger, cardinality: "0..n"}
+      - {verb: has, target: idea_score, cardinality: "0..n"}
+      - {verb: becomes, target: project, cardinality: "0..1", note: path 13, after a Director approves}
+  research_protocol:
+    definition: The fixed list of questions every research report on one idea type must answer, with minimum sources. Plain code checks coverage against it, so style can't hide a gap.
+    identifier: portfolio/protocol.yaml
+  evidence_ledger:
+    definition: Every claim in an idea's research, each with a source URL and an exact quote. Plain code fetches each page and looks for the quote. Only verified claims count as evidence.
+  red_team:
+    definition: A model call that argues an idea fails, against the habit of agreeing. Its claims go through the same checks.
+  judge:
+    definition: One scoring run of an idea against the rubric. Several judges, with the rubric order shuffled, score each idea. They never see the weights.
+    not_to_be_confused_with: [critic]
+  weights:
+    definition: How much each criterion counts, one profile per company stage. Only a Director changes them, inside the North Star's floor and ceiling.
+    identifier: portfolio/weights.yaml
+  idea_score:
+    definition: An idea's weighted score out of 100 with a range, computed by plain code from the judges' medians and spread. Unknown criteria widen the range and never count as a middle score. Ideas whose ranges overlap are tied.
+  exploration_slot:
+    definition: About one build slot in five, given to an idea with high potential and high uncertainty, picked by its optimistic score, so a wrong weight can't starve a good idea forever.
+  prediction:
+    definition: An idea's scores, evidence and the versions that made them, frozen on the run-log branch at decision time, to compare with outcomes later.
+  naming_gate:
+    definition: The check between approving research and starting a build. An idea is researched under a working name, and a Director's approval needs a chosen name that a Director screened against the trademark registers within 180 days. Plain code checks npm, the org's repos and DNS, and links the register searches.
+    identifier: the Naming block in an idea's issue; naming.py in the portfolio
+  grade:
+    definition: A Director's 1-to-5 marks on a research report for depth, competitors and correctness. Each Director's grades are kept separately; disagreement is information.
+
+  research_report:
+    definition: One researcher's answers, claims and competitors for one idea, in the research.v1 shape, wherever it ran. Plain code checks it before anything uses it.
+    identifier: contracts/research.v1.schema.json; a file on the portfolio's research-inbox branch
+  org_api:
+    definition: The set of org operations, each defined once with its inputs, outputs and who may call it, such as submit an idea or attach research. The Director plugin is its first client; the company app and intake adapters come later (path 16).
+  director_plugin:
+    definition: The Claude Code plugin each Director installs. A local MCP server that acts through the Director's own login, plus skills for research and triage, so heavy work runs on the Director's subscription.
+    identifier: plugins/delvera in delvera-hq/organization
+
+  # Delivery and safety
+  workflow:
+    definition: A GitHub Actions workflow file in .github/workflows.
+  github_environment:
+    definition: A GitHub Actions Environment that holds secrets and is limited to main, such as agent-llm (the LLM key) or agent-publish (the App key).
+  template:
+    definition: The Copier template in delvera-hq/org-templates. Repos are rendered from it and kept current with copier update. Released as tags, such as v0.1.13.
+    aliases: [golden_path]
+  template_version:
+    definition: The template tag a repo was rendered from, read from _commit in .copier-answers.yml.
+  patch_publisher:
+    definition: The deterministic publish job that checks the agent's patch and opens the PR. It's the only job with a write token.
+    aliases: [publish_job]
+  check:
+    definition: A required status on a PR, from a workflow that holds no secrets, such as checks or names.
+  verdict:
+    definition: The Critic's output, a JSON document that plain code reads.
+  probe:
+    definition: The check after each deploy that the new release is live and healthy (path 3).
+  rollback:
+    definition: Sending all traffic back to the known good version after a failed probe.
+  revert:
+    definition: The PR that undoes a release that failed its probe. It merges itself when its checks pass.
+  known_good_version:
+    definition: The release that was live before a deploy and passed its own probe. A rollback returns to it.
+  stop_switch:
+    definition: A repo variable that stops one part of the pipeline with no code change, such as AUTO_MERGE, AUTO_START, AUTO_ROLLBACK or DEPLOY_FREEZE.
+    aliases: [kill_switch, deploy_freeze]
+  budget:
+    definition: A dollar ceiling. Today, the per-run cap AGENT_RUN_BUDGET_USD and the monthly limit on the Anthropic workspace.
+  environment:
+    definition: Where a release runs. Exactly one of sandbox, preview, staging, production.
+    values: [sandbox, preview, staging, production]
+    not_to_be_confused_with: [github_environment]
+
+  # Replaced. Kept so old documents still read.
+  pod:
+    status: replaced
+    replaced_by: [operations_domain, pillar]
+    note: A pod was a named group of agents that owned a domain. Agents aren't grouped now; one workflow runs one agent per task. The company's own operations are split into operations domains, and all work is grouped by pillar.
+  gate_pr:
+    status: replaced
+    replaced_by: [approval]
+    note: The planned Gate PR, a PR that records an approval file, isn't used. A Director's label, merge or review is the approval.
+  deliverable:
+    status: replaced
+    replaced_by: [task, project]
+    note: A versioned output with acceptance criteria. Acceptance criteria now live on each task, and the output is the project's live release.
+  fix_round:
+    status: replaced
+    replaced_by: [hold]
+    note: The planned automatic coder re-run after a failed Critic verdict isn't built. A failed verdict holds the PR for a Director.
+
+# Removed from the live glossary on 2026-11-12, because nothing live uses them. Their old definitions are in the
+# parts bin, bootstrap/org-control-plane/GLOSSARY.yaml in delvera-hq/organization. Bring one back with its entry when
+# work needs it.
+removed: [skill, mcp_tool, gate_class, strike, model_tier, model_family, break_glass, operating_mode,
+  gate_bundle, token_broker, cell, classification, compartment, lead_ledger, claim_ledger, campaign_request, sentinel,
+  migration_class, meta_agent, candidate, evolution_mode, channel, dev_set, holdout_set, feature, exception_rate,
+  circuit_breaker]

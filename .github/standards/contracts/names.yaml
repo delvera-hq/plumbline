@@ -1,0 +1,77 @@
+# Every label, topic and project value in use. names.py fails on anything that isn't here.
+# Add an entry in the same change set as the work that needs it. A renamed name keeps its old one in `aliases`.
+version: "1.6.0"
+updated: "2026-11-13"
+
+labels:
+  "agent:go":
+    meaning: A Director starts the coding agent on this task issue (path 1).
+    used_by: [agent.yml, ISSUE_TEMPLATE/task.yml]
+  brief:
+    meaning: A Director's brief for the planner, which writes and runs its tasks (path 2).
+    used_by: [brief.yml, ISSUE_TEMPLATE/brief.yml]
+  idea:
+    meaning: A Director's product idea. Adding it starts research and scoring (path 12). Re-adding it researches again.
+    used_by: [portfolio.yml, ISSUE_TEMPLATE/idea.yml]
+  "idea:assess":
+    meaning: Check and score the research attached to this idea. The Director plugin's attach_research adds it (path 16).
+    used_by: [portfolio.yml]
+  "idea:pivot":
+    meaning: A Director asks for a pivot review of a weak idea, which files up to three variants as child ideas.
+    used_by: [portfolio.yml]
+  "idea:variant":
+    meaning: A variant of a weak idea, filed by a pivot review and linked to its parent with a Parent line.
+    used_by: [portfolio.yml]
+  "idea:name":
+    meaning: A Director asks plain code to check an idea's Naming block. Approval needs a chosen, screened name (path 12, section 9).
+    used_by: [portfolio.yml]
+  "idea:release-check":
+    meaning: A Director asks whether a nearly-built idea is cheap enough to release as a test, whatever its score (path 12, section 8).
+    used_by: [portfolio.yml]
+  "idea:scored":
+    meaning: The idea has a checked report and a score. Set by the pipeline.
+    used_by: [portfolio.yml]
+  "idea:approved":
+    meaning: A Director approved the idea to be built (path 13 takes it from here).
+    used_by: [portfolio.yml]
+  "idea:parked":
+    meaning: The idea waits. A hard limit or a Director parked it, with the reason in a comment.
+    used_by: [portfolio.yml]
+  "idea:stopped":
+    meaning: A Director stopped the idea. Nothing is deleted.
+    used_by: [portfolio.yml]
+
+# GitHub creates these in every new repo. The pipeline doesn't use them. They're allowed so a new repo passes the
+# check. Deleting them from a repo is fine.
+github_default_labels: [bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question,
+  wontfix, accessibility]
+
+topics:
+  pillar-products: {term: pillar}
+  pillar-services: {term: pillar}
+  pillar-research: {term: pillar}
+  pillar-operations: {term: pillar}
+  line-foundational: {term: product_line}
+  line-ai-first: {term: product_line}
+  line-applications: {term: product_line}
+
+# Keys and values in .copier-answers.yml, copier.yml questions and project.yaml.
+project_values:
+  project_slug: {pattern: "^[a-z][a-z0-9-]{1,62}$", meaning: "Repository name."}
+  project: {pattern: "^[a-z0-9][a-z0-9-]*$", term: project}
+  product_name: {pattern: "^[A-Za-z0-9][A-Za-z0-9 .&'-]{0,59}$", term: naming_gate, meaning: "The product's name as users see it, chosen and screened at the naming gate."}
+  package_name: {pattern: "^(@[a-z0-9][a-z0-9-]*/)?[a-z0-9][a-z0-9._-]*$", term: naming_gate, meaning: "The npm package users install, chosen at the naming gate."}
+  tenant: {pattern: "^(internal|client-[a-z0-9-]+)$", term: tenant}
+  cost_center: {pattern: "^cc-[a-z0-9-]+$", term: cost_center}
+  flavor: {values: [web, api, service, deliverable, portfolio], term: template, meaning: "Which kind of repo the template renders."}
+  node_version: {pattern: "^[0-9]+$"}
+  platform: {values: [broker, none], meaning: "broker is the full design. none is the thin path, with no broker."}
+  public: {values: [true, false], meaning: "Whether the repo is public. A public repo runs the name check from a pinned copy of these standards, since it can't use the private action."}
+  scope: {values: [org, product, client], term: scope}
+  pillar: {values: [services, products, research, operations], term: pillar}
+  product_line: {values: [foundational, ai-first, applications], term: product_line}
+  kind: {values: [product, factory], term: kind}
+  # Reserved. The Directors set these with NORTHSTAR.md. Until then any value fails the check.
+  work_class: {values: [], status: reserved, term: work_class}
+  bet: {values: [], status: reserved, term: bet}
+  data_class: {values: [], status: reserved, meaning: "Set by path 13 with the first drafted project.yaml."}
