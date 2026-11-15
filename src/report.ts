@@ -85,7 +85,7 @@ export function renderDriftReport(findings: Finding[]): string {
     "## Findings",
     "",
     ...(sorted.length === 0 ? ["No drift findings.", ""] : sorted.flatMap(renderFinding)),
-    "Did this audit help? Tell us by opening an issue at https://github.com/delvera-hq/plumbline/issues or through the waitlist form on the docs site.",
+    "Did this audit help? Tell us in a minute: https://github.com/delvera-hq/plumbline/issues/new?template=ran-the-audit.yml",
   ];
   return `${lines.join("\n")}\n`;
 }
