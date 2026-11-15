@@ -27,7 +27,7 @@ JIRA_TOKEN=...</code></pre>
         </li>
         <li>
           <p>Print a drift report with <code>plumbline audit --config FILE</code>, where <code>FILE</code> is your config file:</p>
-          <pre><code>npx plumbline audit --config plumbline.env</code></pre>
+          <pre><code>npx @delvera-ai/plumbline audit --config plumbline.env</code></pre>
         </li>
         <li>
           <p>Add the MCP server to your assistant with <code>plumbline mcp</code>. This example registers it with Claude Code. Replace each placeholder with your own values:</p>
@@ -41,7 +41,7 @@ JIRA_TOKEN=...</code></pre>
   --env JIRA_BASE_URL=https://example.atlassian.net \
   --env JIRA_EMAIL=you@example.com \
   --env JIRA_TOKEN=... \
-  plumbline -- npx plumbline mcp</code></pre>
+  plumbline -- npx -y @delvera-ai/plumbline mcp</code></pre>
         </li>
         <li>
           <p>Start your assistant and ask it to run <code>find_drift</code>.</p>
