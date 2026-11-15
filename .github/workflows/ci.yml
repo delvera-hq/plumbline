@@ -31,6 +31,8 @@ jobs:
 
   # Path 11. Every event name and field, label, topic and project value must be in delvera-hq/org-standards.
   # It reads files as data and runs nothing from the PR. A failure prints the exact entry to add there.
+  # The action is pinned to the commit of a release, not to the v1 tag, so a moved tag can't change it. A template
+  # release moves the pin.
   names:
     runs-on: ubuntu-24.04
     timeout-minutes: 5

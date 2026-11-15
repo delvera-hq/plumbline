@@ -4,7 +4,8 @@
 It reads only GitHub's record of the PR: its metadata, its file list with patches, and a count of recent
 automatic reverts. It never runs PR code. Anything it can't read, or doesn't recognize, means hold.
 
-Usage: risk.py --pr pr.json --files files.json --reverts N [--known-hosts "a.com b.com"] [--max-lines 300]
+Usage: risk.py --pr pr.json --files files.json --reverts N --app-login "slug[bot]" [--known-hosts "a.com b.com"]
+       [--max-lines 300]
 Prints JSON: {"eligible": bool, "reasons": [...]}. Exit 0 always, unless the input is unreadable.
 """
 import argparse
@@ -26,17 +27,25 @@ REVERT_BREAKER = 2  # Automatic reverts merged in the last 7 days that pause aut
 # C4, the data-surface check. Each pattern runs on added lines only, case-insensitive.
 SURFACES = [
     ("a form", r"<form\b"),
-    ("a field for personal data", r"<input\b[^>]*\btype\s*=\s*[\"']?(email|password|tel)\b"),
+    # Any input a person can type into. Only kinds that hold no typed text are let through.
+    ("a field for personal data",
+     r"<input\b(?![^>]*\btype\s*=\s*[\"']?(hidden|submit|button|reset|checkbox|radio|range|color|image)\b)"),
+    ("a field for personal data", r"<textarea\b|\bcontenteditable\b"),
     ("a mailto link", r"mailto:"),
     ("a payment provider", r"\b(stripe|paypal|braintree|squareup|paddle|lemonsqueezy|adyen|razorpay|mollie)\b"),
     ("tracking or analytics", r"googletagmanager|google-analytics|\bgtag\(|plausible\.io|posthog|segment\.(com|io)|mixpanel|hotjar|connect\.facebook\.net|clarity\.ms"),
     ("a script or frame from another site", r"<(script|iframe)\b[^>]*\bsrc\s*=\s*[\"']?(https?:)?//"),
+    ("a beacon or socket that sends data out", r"\bsendBeacon\b|\bnew\s+WebSocket\b|\bEventSource\b"),
     ("a cookie or browser storage", r"document\.cookie|localStorage\.setItem|sessionStorage\.setItem"),
     ("a secret-shaped value", r"AKIA[0-9A-Z]{16}|\bsk-(ant-)?[A-Za-z0-9_-]{20,}|\bgh[pousr]_[A-Za-z0-9]{30,}|github_pat_|\bxox[abpr]-|-----BEGIN [A-Z ]*PRIVATE KEY"),
 ]
 SURFACE_RES = [(name, re.compile(rx, re.I)) for name, rx in SURFACES]
-URL = re.compile(r"https?://([A-Za-z0-9.-]+)", re.I)
+# A host after a scheme (http, https, ws, wss), or after a bare // that starts a string, an attribute or url().
+# A bare // anywhere else is a code comment, so it isn't a host.
+URL = re.compile(r"(?:\b(?:https?|wss?)://|(?:[\"'`(]|\b(?:src|href|action|srcset|poster|data)\s*=\s*)//)([A-Za-z0-9.-]+)", re.I)
 SAFE_HOSTS = re.compile(r"(^|\.)(example\.(com|org|net)|[a-z0-9-]+\.example|localhost|127\.0\.0\.1)$", re.I)
+# Markdown is prose. The site serves only public/ as files, so a link in a .md file makes no call.
+PROSE = re.compile(r"\.(md|markdown)$", re.I)
 TEST_PATH = path_gate.TEST_FILE
 
 
@@ -46,20 +55,28 @@ def added_lines(patch: str):
             yield line[1:]
 
 
-def assess(pr: dict, files: list, reverts: int, known_hosts: set, max_lines: int) -> tuple[bool, list[str]]:
+def assess(pr: dict, files: list, reverts: int, known_hosts: set, max_lines: int,
+           app_login: str = "") -> tuple[bool, list[str]]:
     reasons = []
-    head = (pr.get("head") or {}).get("ref", "")
+    head = pr.get("head") or {}
+    base = pr.get("base") or {}
     user = pr.get("user") or {}
     # These decide whether path 4 applies at all. A person's PR is never auto-merged.
-    if not head.startswith("agent/"):
+    if not (head.get("ref") or "").startswith("agent/"):
         reasons.append("not an agent branch")
-    if user.get("type") != "Bot":
+    # Only this repo's App. Any other bot can open a PR from an agent/ branch too.
+    if not app_login:
+        reasons.append("the App's login isn't known")
+    elif user.get("type") != "Bot" or user.get("login") != app_login:
         reasons.append("not opened by the App")
+    head_repo = (head.get("repo") or {}).get("full_name")
+    if not head_repo or head_repo != (base.get("repo") or {}).get("full_name"):
+        reasons.append("the branch isn't in this repo")
     if pr.get("draft"):
         reasons.append("draft")
     if pr.get("state") != "open":
         reasons.append(f"PR is {pr.get('state')}")
-    if (pr.get("base") or {}).get("ref") != "main":
+    if base.get("ref") != "main":
         reasons.append("base isn't main")
     if reverts >= REVERT_BREAKER:
         reasons.append(f"auto-merge paused: {reverts} automatic reverts in the last 7 days")
@@ -87,7 +104,7 @@ def assess(pr: dict, files: list, reverts: int, known_hosts: set, max_lines: int
             for label, rx in SURFACE_RES:
                 if rx.search(line):
                     reasons.append(f"{name}: adds {label}")
-            if not TEST_PATH.search(name):
+            if not TEST_PATH.search(name) and not PROSE.search(name):
                 for host in URL.findall(line):
                     host = host.lower().rstrip(".")
                     if host not in known_hosts and not SAFE_HOSTS.search(host):
@@ -102,6 +119,7 @@ def main() -> int:
     parser.add_argument("--pr", required=True)
     parser.add_argument("--files", required=True)
     parser.add_argument("--reverts", type=int, required=True)
+    parser.add_argument("--app-login", default="", help="The App's bot login, such as my-app[bot]. Empty means hold.")
     parser.add_argument("--known-hosts", default="")
     parser.add_argument("--max-lines", type=int, default=300)
     args = parser.parse_args()
@@ -110,7 +128,7 @@ def main() -> int:
     if files and isinstance(files[0], list):  # gh api --paginate --slurp gives a list of pages.
         files = [f for page in files for f in page]
     hosts = {h.lower() for h in args.known_hosts.split()}
-    eligible, reasons = assess(pr, files, args.reverts, hosts, args.max_lines)
+    eligible, reasons = assess(pr, files, args.reverts, hosts, args.max_lines, args.app_login.strip())
     print(json.dumps({"eligible": eligible, "reasons": reasons}))
     return 0
 

@@ -1,5 +1,5 @@
 # Paths 1 and 3. A merge to main goes live, then a probe checks it. If the probe fails, traffic goes back to the
-# version that was live before, and a revert PR opens and merges itself when its checks pass.
+# version that was live before, and a revert PR opens. It merges itself when its checks pass if the agent made the change.
 # The build and the probes run repo code or none, and hold no secrets. The token jobs run only a pinned wrangler.
 # Set the repo variable AUTO_ROLLBACK to false to stop rollback and revert. PROBE_PATHS lists extra paths that must
 # return 200, such as "/ /docs/".
@@ -91,8 +91,10 @@ jobs:
           path: dist
       - name: Install wrangler, with no token in reach of its install scripts
         env:
-          WRANGLER: ${{ vars.WRANGLER_VERSION }}
-        run: npm install --no-audit --no-fund --prefix "$RUNNER_TEMP/tool" "wrangler@$WRANGLER"
+          WRANGLER: ${{ vars.WRANGLER_VERSION || '4.156.0' }} # An exact version only, so a new release can't slip in.
+        run: |
+          [[ "$WRANGLER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::WRANGLER_VERSION must be an exact version, such as 4.156.0"; exit 1; }
+          npm install --no-audit --no-fund --prefix "$RUNNER_TEMP/tool" "wrangler@$WRANGLER"
       - name: Write the config here, as the repo's copy can carry a build command that would run beside the token
         env:
           WORKER: ${{ vars.WORKER_NAME }}
@@ -167,8 +169,10 @@ jobs:
           package-manager-cache: false
       - name: Install wrangler, with no token in reach of its install scripts
         env:
-          WRANGLER: ${{ vars.WRANGLER_VERSION }}
-        run: npm install --no-audit --no-fund --prefix "$RUNNER_TEMP/tool" "wrangler@$WRANGLER"
+          WRANGLER: ${{ vars.WRANGLER_VERSION || '4.156.0' }} # An exact version only, so a new release can't slip in.
+        run: |
+          [[ "$WRANGLER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::WRANGLER_VERSION must be an exact version, such as 4.156.0"; exit 1; }
+          npm install --no-audit --no-fund --prefix "$RUNNER_TEMP/tool" "wrangler@$WRANGLER"
       - name: Write the config here
         env:
           WORKER: ${{ vars.WORKER_NAME }}
@@ -203,8 +207,9 @@ jobs:
         run: bash .github/agent/probe.sh "$URL" "$EXPECT"
 
   revert:
-    # Main still holds the bad commit, and the next deploy would ship it again. This opens a revert PR, which
-    # merges itself when its checks pass. It never reverts a revert, and opens one revert at a time.
+    # Main still holds the bad commit, and the next deploy would ship it again. This opens a revert PR. It merges
+    # itself when its checks pass only if the bad commit was the App's agent PR. Otherwise a person merges it. It
+    # never reverts a revert, and opens one revert at a time. When it can't revert, it opens an issue.
     needs: [baseline, deploy, probe, rollback, recheck]
     if: >-
       always() && vars.AUTO_ROLLBACK != 'false' && needs.baseline.outputs.ok == 'true'
@@ -241,6 +246,9 @@ jobs:
           ROLLBACK: ${{ needs.rollback.result }}
           RECHECK: ${{ needs.recheck.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+          AUTO_ROLLBACK: ${{ vars.AUTO_ROLLBACK }}
+          DEPLOY_FREEZE: ${{ vars.DEPLOY_FREEZE }}
         run: bash .github/agent/revert.sh
 
   record:
