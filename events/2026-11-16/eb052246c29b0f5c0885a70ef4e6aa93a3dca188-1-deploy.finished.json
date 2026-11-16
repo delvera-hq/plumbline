@@ -1,0 +1,26 @@
+{
+ "schema_version": "1.0",
+ "event_id": "evt_01M7HR49BD7FW80QAT7SPF0HGZ",
+ "type": "deploy.finished",
+ "occurred_at": "2026-11-16T08:38:39Z",
+ "producer": {
+  "kind": "controller",
+  "id": "delvera-hq/plumbline/deploy.yml:record",
+  "workflow_ref": "delvera-hq/plumbline/.github/workflows/deploy.yml@refs/heads/main",
+  "github_run_id": "43832735611"
+ },
+ "authority": "controller",
+ "correlation": {
+  "run_id": "run_43832735611_1",
+  "tenant": "internal",
+  "project": "plumbline"
+ },
+ "data_schema": "events/deploy.finished.v1",
+ "data": {
+  "sha": "eb052246c29b0f5c0885a70ef4e6aa93a3dca188",
+  "result": "ok",
+  "cf_version_id": "5aadf4c3-4652-4d5a-805f-ad2ffcd9019f",
+  "probe": "success",
+  "baseline_ok": true
+ }
+}
