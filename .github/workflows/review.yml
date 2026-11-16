@@ -4,7 +4,8 @@
 # 2. critic.py: one LLM review with no tools, against the issue's acceptance criteria.
 # 3. If both pass, the App merges, bound to the reviewed commit. Path 3's probe and rollback catch what slips through.
 # Anything else leaves the PR for a Director, with a comment saying why. Nothing here runs PR code.
-# Turn it on with the repo variable AUTO_MERGE=true. Run it by hand for the Critic's seeded-defect self-test.
+# Turn it on with the repo variable AUTO_MERGE=true. The merge job reads it again just before it merges, and holds while
+# DEPLOY_FREEZE is true. Run it by hand for the Critic's seeded-defect self-test.
 name: review
 on:
   workflow_run:
@@ -64,12 +65,16 @@ jobs:
           GH_REPO: ${{ github.repository }}
           SHA: ${{ github.event.workflow_run.head_sha }}
           BRANCH: ${{ github.event.workflow_run.head_branch }}
+          APP_SLUG: ${{ vars.APP_SLUG }}
         run: |
           set -euo pipefail
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::odd head sha"; exit 1; }
           PR=$(gh api "repos/$GH_REPO/commits/$SHA/pulls" --jq "[.[] | select(.state == \"open\" and .head.sha == \"$SHA\")][0].number // empty")
           if [ -z "$PR" ]; then echo "No open PR has head $SHA any more. Nothing to do."; exit 0; fi
           gh api "repos/$GH_REPO/pulls/$PR" > pr.json
+          # The App's login, for risk.py. The repo variable APP_SLUG names the App, and delvera-hq-agent is the default.
+          # The merge job checks again against the slug of the App whose key it holds.
+          echo "${APP_SLUG:-delvera-hq-agent}[bot]" > app_login.txt
           gh api --paginate --slurp "repos/$GH_REPO/pulls/$PR/files" > files.json
           gh api -H "Accept: application/vnd.github.diff" "repos/$GH_REPO/pulls/$PR" > diff.txt
           ISSUE=$(sed -nE 's#^agent/issue-([0-9]+)-.*#\1#p' <<<"$BRANCH")
@@ -94,7 +99,7 @@ jobs:
           set -euo pipefail
           HOSTS="$KNOWN_HOSTS $(sed -E 's#^https?://([^/]+).*#\1#' <<<"$URL")"
           python3 -I .github/agent/risk.py --pr pr.json --files files.json --reverts "$(cat reverts.txt)" \
-            --known-hosts "$HOSTS" > risk.json
+            --known-hosts "$HOSTS" --app-login "$(cat app_login.txt)" > risk.json
           cat risk.json
           echo "eligible=$(jq -r .eligible risk.json)" >> "$GITHUB_OUTPUT"
       - id: critic
@@ -159,9 +164,24 @@ jobs:
           DECISION: ${{ needs.review.outputs.decision }}
           REASONS: ${{ needs.review.outputs.reasons }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+          # Read again here, not only in the review job's if. A Director may turn it off while the Critic runs.
+          AUTO_MERGE: ${{ vars.AUTO_MERGE }}
+          DEPLOY_FREEZE: ${{ vars.DEPLOY_FREEZE }}
         run: |
           set -uo pipefail
           LIST=$(base64 -d <<<"$REASONS" | jq -r '.[] | "- " + .')
+          if [ "$DECISION" = "merge" ]; then
+            # The last checks before the merge. Any of them failing holds the PR for a Director.
+            STOP=""
+            if [ "$AUTO_MERGE" != "true" ]; then STOP="AUTO_MERGE was turned off before the merge"; fi
+            if [ "$DEPLOY_FREEZE" = "true" ]; then STOP="DEPLOY_FREEZE is true"; fi
+            if [ -z "$STOP" ] && ! gh api "repos/$GH_REPO/pulls/$PR" | jq -e --arg app "${APP_SLUG}[bot]" --arg slug "$APP_SLUG" \
+              '$slug != "" and .user.login == $app and .head.repo.full_name == .base.repo.full_name' > /dev/null; then
+              STOP="the PR isn't this App's own, from a branch in this repo"
+            fi
+            if [ -n "$STOP" ]; then DECISION=hold; LIST="- $STOP"; fi
+          fi
           if [ "$DECISION" = "merge" ]; then
             # Bound to the reviewed commit: a push after the review makes this fail rather than merge unreviewed code.
             if gh pr merge "$PR" --squash --match-head-commit "$SHA"; then

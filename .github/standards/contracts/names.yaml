@@ -14,7 +14,7 @@ labels:
     meaning: A Director's product idea. Adding it starts research and scoring (path 12). Re-adding it researches again.
     used_by: [portfolio.yml, ISSUE_TEMPLATE/idea.yml]
   "idea:assess":
-    meaning: Check and score the research attached to this idea. The Director plugin's attach_research adds it (path 16).
+    meaning: Check and score the research attached to this idea. The Director plugin's `delvera-research attach` adds it, run by a Director (path 16).
     used_by: [portfolio.yml]
   "idea:pivot":
     meaning: A Director asks for a pivot review of a weak idea, which files up to three variants as child ideas.
